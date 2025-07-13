@@ -1,0 +1,172 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Inter Font Family */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&display=swap');
+
+@layer base {
+  :root {
+    /* Modern Design System CSS Variables */
+  --modern-gray-50: #f5f5f7;
+  --modern-gray-100: #e1e1e6;
+  --modern-gray-200: #d2d2d7;
+  --modern-gray-300: #b7b7bd;
+  --modern-gray-400: #98989d;
+  --modern-gray-500: #6e6e73;
+  --modern-gray-600: #515154;
+  --modern-gray-700: #424245;
+  --modern-gray-800: #2c2c2e;
+  --modern-gray-900: #1d1d1f;
+
+  --modern-blue-500: #0071e3;
+  --modern-blue-600: #0077ed;
+    
+    /* Spacing tokens based on 4px grid */
+    --spacing-xxs: 4px;
+    --spacing-xs: 8px;
+    --spacing-sm: 12px;
+    --spacing-md: 16px;
+    --spacing-lg: 24px;
+    --spacing-xl: 32px;
+    --spacing-xxl: 48px;
+    --spacing-xxxl: 64px;
+    
+    /* Typography tokens */
+    --font-weight-light: 300;
+    --letter-spacing-tight: -0.5px;
+    
+    /* Effects */
+    --backdrop-blur-standard: 14px;
+  --shadow-modern-card: 0 12px 48px rgba(0, 0, 0, 0.08);
+  --shadow-modern-modal: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  --shadow-modern-button: 0 4px 14px 0 rgba(0, 113, 227, 0.39);
+  }
+  
+  * {
+    @apply border-border;
+  }
+  
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  
+  body {
+    @apply bg-gray-50 text-gray-900 font-sans;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    text-rendering: optimizeLegibility;
+  }
+  
+  /* Modern-style headings */
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: var(--font-weight-light);
+    letter-spacing: var(--letter-spacing-tight);
+  }
+}
+
+@layer components {
+  /* Modern Button Styles */
+  .modern-button {
+    @apply inline-flex items-center justify-center rounded-full bg-blue-500 px-6 py-3 text-sm font-medium text-white transition-all duration-200 hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2;
+    box-shadow: var(--shadow-modern-button);
+  }
+  
+  .modern-button-secondary {
+    @apply inline-flex items-center justify-center rounded-full bg-gray-100 px-6 py-3 text-sm font-medium text-gray-900 transition-all duration-200 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-300 focus:ring-offset-2;
+  }
+  
+  /* Modern Card Styles */
+  .modern-card {
+    @apply rounded-2xl bg-white border border-gray-200 p-6 transition-all duration-300 hover:shadow-modern-card;
+    box-shadow: var(--shadow-modern-card);
+  }
+  
+  .modern-card-dark {
+    @apply rounded-2xl bg-gray-900 border border-gray-800 p-6 transition-all duration-300;
+    box-shadow: var(--shadow-modern-card);
+  }
+  
+  /* Modern Modal/Overlay */
+  .modern-modal {
+    @apply fixed inset-0 z-50 flex items-center justify-center p-4;
+    backdrop-filter: blur(var(--backdrop-blur-standard));
+    background-color: rgba(0, 0, 0, 0.4);
+  }
+  
+  .modern-modal-content {
+    @apply relative bg-white rounded-2xl p-6 w-full max-w-md;
+    box-shadow: var(--shadow-modern-modal);
+  }
+  
+  /* Modern Typography */
+  .modern-display-large {
+    @apply text-6xl font-light tracking-tight;
+  }
+  
+  .modern-display-medium {
+    @apply text-5xl font-light tracking-tight;
+  }
+  
+  .modern-display-small {
+    @apply text-4xl font-light tracking-tight;
+  }
+  
+  .modern-headline-large {
+    @apply text-3xl font-medium;
+  }
+  
+  .modern-headline-medium {
+    @apply text-2xl font-medium;
+  }
+  
+  .modern-headline-small {
+    @apply text-xl font-medium;
+  }
+  
+  /* Modern Text Gradient */
+  .modern-text-gradient {
+    @apply bg-gradient-to-r from-blue-500 to-blue-600 bg-clip-text text-transparent;
+  }
+  
+  /* Modern Navigation */
+  .modern-nav {
+    @apply fixed top-0 left-0 right-0 z-40 bg-white/80 border-b border-gray-200;
+    backdrop-filter: blur(var(--backdrop-blur-standard));
+  }
+  
+  /* Modern Spacing Utilities */
+  .space-modern-xxs { margin: var(--spacing-xxs); }
+  .space-modern-xs { margin: var(--spacing-xs); }
+  .space-modern-sm { margin: var(--spacing-sm); }
+  .space-modern-md { margin: var(--spacing-md); }
+  .space-modern-lg { margin: var(--spacing-lg); }
+  .space-modern-xl { margin: var(--spacing-xl); }
+  .space-modern-xxl { margin: var(--spacing-xxl); }
+  .space-modern-xxxl { margin: var(--spacing-xxxl); }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #404040;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #606060;
+}
