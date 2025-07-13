@@ -300,17 +300,38 @@ EOF
     log_success "环境变量文件创建完成"
 }
 
+# 启动服务
+start_services() {
+    log_info "启动Docker服务..."
+    
+    # 确保在项目目录
+    cd /opt/jab-rental
+    
+    # 跳过 docker-compose pull（避免段错误），直接启动服务
+    # Docker会自动拉取缺失的镜像
+    log_info "启动服务（Docker将自动拉取所需镜像）..."
+    
+    # 构建并启动服务
+    docker-compose up -d
+    
+    # 等待服务启动
+    log_info "等待服务启动..."
+    sleep 30
+    
+    # 检查服务状态
+    docker-compose ps
+    
+    log_success "Docker服务启动完成"
+}
+
 # 部署应用
 deploy_application() {
     log_info "部署应用..."
     
     cd /opt/jab-rental
     
-    # 拉取最新镜像
-    docker-compose pull
-    
     # 启动服务
-    docker-compose up -d
+    start_services
     
     # 等待服务启动
     log_info "等待服务启动..."
