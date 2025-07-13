@@ -2,6 +2,10 @@
 
 FROM node:18-alpine AS base
 
+# 配置国内镜像源加速
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && \
+    npm config set registry https://registry.npmmirror.com
+
 # 安装依赖
 FROM base AS deps
 RUN apk add --no-cache libc6-compat
@@ -9,7 +13,7 @@ WORKDIR /app
 
 # 复制依赖文件
 COPY package.json package-lock.json* ./
-RUN npm ci --only=production
+RUN npm ci --only=production --registry=https://registry.npmmirror.com
 
 # 构建应用
 FROM base AS builder
@@ -22,7 +26,7 @@ RUN npx prisma generate
 
 # 构建 Next.js 应用
 ENV NEXT_TELEMETRY_DISABLED 1
-RUN npm run build
+RUN npm run build --registry=https://registry.npmmirror.com
 
 # 生产镜像
 FROM base AS runner
