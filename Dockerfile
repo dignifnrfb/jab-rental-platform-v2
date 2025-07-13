@@ -13,10 +13,7 @@ WORKDIR /app
 
 # 复制依赖文件
 COPY package.json package-lock.json* ./
-
-# 尝试使用 npm ci，如果失败则使用 npm install
-RUN npm ci --omit=dev --registry=https://registry.npmmirror.com || \
-    npm install --omit=dev --registry=https://registry.npmmirror.com
+RUN npm ci --only=production --registry=https://registry.npmmirror.com
 
 # 构建应用
 FROM base AS builder
@@ -29,7 +26,7 @@ RUN npx prisma generate
 
 # 构建 Next.js 应用
 ENV NEXT_TELEMETRY_DISABLED 1
-RUN npm run build
+RUN npm run build --registry=https://registry.npmmirror.com
 
 # 生产镜像
 FROM base AS runner
