@@ -57,7 +57,7 @@ services:
   app:
     build: 
       context: .
-      dockerfile: ./dockerfile
+      dockerfile: Dockerfile
       args:
         NODE_ENV: production
     container_name: jab-app
