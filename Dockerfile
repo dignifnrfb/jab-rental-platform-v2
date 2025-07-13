@@ -1,53 +1,74 @@
 # JAB租赁平台 - Docker部署方案
-
+# 使用官方Node.js 18 Alpine镜像作为基础镜像
 FROM node:18-alpine AS base
 
-# 配置国内镜像源加速
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && \
-    npm config set registry https://registry.npmmirror.com
+# 设置工作目录
+WORKDIR /app
 
-# 安装依赖
-FROM base AS deps
+# 配置npm使用国内镜像源
+RUN npm config set registry https://registry.npmmirror.com
+
+# 安装系统依赖
 RUN apk add --no-cache libc6-compat
-WORKDIR /app
 
-# 复制依赖文件
+# 依赖安装阶段
+FROM base AS deps
+
+# 复制package文件
 COPY package.json package-lock.json* ./
-RUN npm ci --only=production --registry=https://registry.npmmirror.com
 
-# 构建应用
+# 清理npm缓存并安装依赖
+RUN npm cache clean --force && \
+    npm ci --registry=https://registry.npmmirror.com
+
+# 构建阶段
 FROM base AS builder
-WORKDIR /app
+
+# 复制依赖
 COPY --from=deps /app/node_modules ./node_modules
+
+# 复制源代码
 COPY . .
 
-# 生成 Prisma 客户端
-RUN npx prisma generate
+# 设置环境变量
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=production
 
-# 构建 Next.js 应用
-ENV NEXT_TELEMETRY_DISABLED 1
-RUN npm run build --registry=https://registry.npmmirror.com
+# 生成Prisma客户端（如果存在）
+RUN if [ -f "prisma/schema.prisma" ]; then npx prisma generate; fi
 
-# 生产镜像
+# 构建应用
+RUN npm run build
+
+# 生产运行阶段
 FROM base AS runner
-WORKDIR /app
 
-ENV NODE_ENV production
-ENV NEXT_TELEMETRY_DISABLED 1
+# 设置环境变量
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
 
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+# 创建非root用户
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
 
-# 复制构建产物
+# 复制public文件夹
 COPY --from=builder /app/public ./public
+
+# 复制Next.js构建输出
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
+# 切换到非root用户
 USER nextjs
 
+# 暴露端口
 EXPOSE 3000
 
-ENV PORT 3000
-ENV HOSTNAME "0.0.0.0"
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD node healthcheck.js || exit 1
 
+# 启动应用
 CMD ["node", "server.js"]
