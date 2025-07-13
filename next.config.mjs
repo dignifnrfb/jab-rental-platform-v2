@@ -36,6 +36,17 @@ const nextConfig = {
       use: ['@svgr/webpack'],
     })
     
+    // 修复ESM模块解析问题
+    config.resolve.extensionAlias = {
+      '.js': ['.js', '.ts', '.tsx'],
+      '.mjs': ['.mjs', '.js', '.ts', '.tsx'],
+    }
+    
+    // 确保正确处理node_modules中的ESM模块
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+    }
+    
     // 生产环境优化
     if (!dev && !isServer) {
       config.optimization.splitChunks = {

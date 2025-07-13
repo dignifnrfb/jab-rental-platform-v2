@@ -1,0 +1,81 @@
+{
+  "extends": [
+    "next/core-web-vitals",
+    "airbnb",
+    "airbnb-typescript",
+    "airbnb/hooks"
+  ],
+  "parserOptions": {
+    "project": "./tsconfig.json"
+  },
+  "ignorePatterns": ["commitlint.config.js", "public/"],
+  "rules": {
+    "react/react-in-jsx-scope": "off",
+    "react/jsx-props-no-spreading": "off",
+    "react/function-component-definition": [
+      "error",
+      {
+        "namedComponents": "arrow-function",
+        "unnamedComponents": "arrow-function"
+      }
+    ],
+    "import/prefer-default-export": "off",
+    "import/no-default-export": "off",
+    "react/jsx-filename-extension": [
+      "error",
+      {
+        "extensions": [".tsx", ".jsx"]
+      }
+    ],
+    "@typescript-eslint/no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_"
+      }
+    ],
+    "react/require-default-props": "off",
+    "jsx-a11y/anchor-is-valid": "off",
+    "no-console": "warn",
+    "prefer-const": "error",
+    "react-hooks/exhaustive-deps": "warn",
+    "import/order": [
+      "error",
+      {
+        "groups": [
+          "builtin",
+          "external",
+          "internal",
+          "parent",
+          "sibling",
+          "index"
+        ],
+        "newlines-between": "always",
+        "alphabetize": {
+          "order": "asc",
+          "caseInsensitive": true
+        }
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["src/app/**/*.tsx", "src/app/**/*.ts"],
+      "rules": {
+        "import/no-default-export": "off"
+      }
+    },
+    {
+      "files": ["src/store/**/*.ts"],
+      "rules": {
+        "no-param-reassign": [
+          "error",
+          {
+            "props": true,
+            "ignorePropertyModificationsFor": ["state"]
+          }
+        ]
+      }
+    }
+  ]
+}
