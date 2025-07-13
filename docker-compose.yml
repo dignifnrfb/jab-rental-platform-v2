@@ -55,49 +55,49 @@ services:
       timeout: 10s
       retries: 3
 
-  # JAB 租赁平台应用 (临时注释，先启动基础服务)
-  # app:
-  #   build: 
-  #     context: .
-  #     dockerfile: Dockerfile
-  #     args:
-  #       NODE_ENV: production
-  #   container_name: jab-app
-  #   environment:
-  #     - NODE_ENV=production
-  #     - DATABASE_URL=postgresql://jab_user:${DB_PASSWORD:-jab_secure_2024}@postgres:5432/jab_rental_db?schema=public
-  #     - REDIS_URL=redis://redis:6379
-  #     - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost}
-  #     - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-your-secret-key-here}
-  #     - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}
-  #     - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
-  #     - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
-  #     # 阿里云优化
-  #     - TZ=Asia/Shanghai
-  #     - NODE_OPTIONS=--max-old-space-size=1024
-  #   ports:
-  #     - "3000:3000"
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     redis:
-  #       condition: service_healthy
-  #   restart: unless-stopped
-  #   deploy:
-  #     resources:
-  #       limits:
-  #         memory: 1.5G
-  #       reservations:
-  #         memory: 512M
-  #   networks:
-  #     - jab-network
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
-  #   volumes:
-  #     - app_uploads:/app/uploads
+  # JAB 租赁平台应用
+  app:
+    build: 
+      context: .
+      dockerfile: dockerfile
+      args:
+        NODE_ENV: production
+    container_name: jab-app
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://jab_user:${DB_PASSWORD:-jab_secure_2024}@postgres:5432/jab_rental_db?schema=public
+      - REDIS_URL=redis://redis:6379
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-your-secret-key-here}
+      - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      # 阿里云优化
+      - TZ=Asia/Shanghai
+      - NODE_OPTIONS=--max-old-space-size=1024
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1.5G
+        reservations:
+          memory: 512M
+    networks:
+      - jab-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    volumes:
+      - app_uploads:/app/uploads
 
   # Nginx 反向代理 - 阿里云优化
   nginx:
@@ -111,9 +111,9 @@ services:
       - ./docker/nginx/ssl:/etc/nginx/ssl:ro
       - ./docker/nginx/logs:/var/log/nginx
       - app_uploads:/var/www/uploads:ro
-    # depends_on:
-    #   app:
-    #     condition: service_healthy
+    depends_on:
+      app:
+        condition: service_healthy
     restart: unless-stopped
     deploy:
       resources:
