@@ -1,0 +1,62 @@
+{
+  "name": "jab-rental-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "专业键鼠设备租赁平台 - JAB Rental Platform",
+  "keywords": ["rental", "keyboard", "mouse", "equipment", "nextjs", "typescript"],
+  "author": "JAB Team",
+  "license": "MIT",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "lint:fix": "next lint --fix",
+    "type-check": "tsc --noEmit",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "db:seed": "tsx prisma/seed.ts",
+    "docker:build": "docker build -t jab-rental .",
+    "docker:run": "docker run -p 3000:3000 jab-rental",
+    "docker:compose": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "deploy:aliyun": "chmod +x aliyun-docker-deploy.sh && ./aliyun-docker-deploy.sh"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.7.1",
+    "@react-spring/web": "^9.7.3",
+    "@stripe/stripe-js": "^2.4.0",
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "autoprefixer": "^10.0.1",
+    "clsx": "^2.0.0",
+    "framer-motion": "^10.16.16",
+    "lucide-react": "^0.303.0",
+    "next": "14.0.4",
+    "next-auth": "^4.24.5",
+    "next-pwa": "^5.6.0",
+    "postcss": "^8",
+    "react": "^18",
+    "react-dom": "^18",
+    "stripe": "^14.10.0",
+    "tailwindcss": "^3.3.0",
+    "typescript": "^5",
+    "zustand": "^4.4.7"
+  },
+  "devDependencies": {
+    "@svgr/webpack": "^8.1.0",
+    "@tailwindcss/typography": "^0.5.10",
+    "@types/bcryptjs": "^2.4.6",
+    "eslint": "^8",
+    "eslint-config-next": "14.0.4",
+    "prisma": "^5.7.1",
+    "tsx": "^4.6.2"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  }
+}
