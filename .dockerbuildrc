@@ -1,0 +1,20 @@
+# Docker构建优化配置
+# 用于解决Alpine包管理器速度慢的问题
+
+# 启用BuildKit（提升构建性能）
+export DOCKER_BUILDKIT=1
+export COMPOSE_DOCKER_CLI_BUILD=1
+
+# 构建参数优化
+export BUILDKIT_PROGRESS=plain
+export BUILDKIT_INLINE_CACHE=1
+
+# Alpine镜像源配置（国内加速）
+export ALPINE_MIRROR=mirrors.aliyun.com
+export NPM_REGISTRY=https://registry.npmmirror.com
+
+# 构建缓存配置
+export DOCKER_BUILDKIT_CACHE_MOUNT_NS=jab-rental-platform
+
+# 内存限制（避免OOM）
+export DOCKER_DEFAULT_PLATFORM=linux/amd64
