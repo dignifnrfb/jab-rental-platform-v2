@@ -1,61 +1,46 @@
-/**
- * 健康检查API端点
- * 用于Docker容器健康检查和负载均衡器监控
- */
-
 import { NextResponse } from 'next/server';
 
+/**
+ * 健康检查API端点
+ * 用于Docker容器健康检查和服务监控
+ */
 export async function GET() {
   try {
-    // 基础健康检查
+    // 检查应用基本状态
     const healthStatus = {
       status: 'healthy',
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
       environment: process.env.NODE_ENV || 'development',
-      version: process.env['npm_package_version'] || '1.0.0',
+      version: process.env.npm_package_version || '1.0.0',
+      memory: {
+        used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+        total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
+      },
     };
 
-    // 可以添加更多检查项
-    // - 数据库连接检查
-    // - Redis连接检查
-    // - 外部服务检查等
-
-    return NextResponse.json(healthStatus, {
-      status: 200,
-      headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        Pragma: 'no-cache',
-        Expires: '0',
-      },
-    });
+    return NextResponse.json(healthStatus, { status: 200 });
   } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error('Health check failed:', error);
-
+    console.error('健康检查失败:', error);
+    
     return NextResponse.json(
       {
         status: 'unhealthy',
-        error: 'Health check failed',
         timestamp: new Date().toISOString(),
+        error: error instanceof Error ? error.message : '未知错误',
       },
-      { status: 503 },
+      { status: 500 }
     );
   }
 }
 
-// 支持HEAD请求（某些负载均衡器使用）
+/**
+ * 支持HEAD请求用于简单的健康检查
+ */
 export async function HEAD() {
   try {
-    return new NextResponse(null, {
-      status: 200,
-      headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-      },
-    });
+    return new NextResponse(null, { status: 200 });
   } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error('HEAD health check failed:', error);
-    return new NextResponse(null, { status: 503 });
+    return new NextResponse(null, { status: 500 });
   }
 }
