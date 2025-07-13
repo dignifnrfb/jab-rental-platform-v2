@@ -13,7 +13,7 @@ export async function GET() {
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
       environment: process.env.NODE_ENV || 'development',
-      version: process.env.npm_package_version || '1.0.0',
+      version: process.env['npm_package_version'] || '1.0.0',
     };
 
     // 可以添加更多检查项
@@ -21,24 +21,25 @@ export async function GET() {
     // - Redis连接检查
     // - 外部服务检查等
 
-    return NextResponse.json(healthStatus, { 
+    return NextResponse.json(healthStatus, {
       status: 200,
       headers: {
         'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0',
+        Pragma: 'no-cache',
+        Expires: '0',
       },
     });
   } catch (error) {
+    // eslint-disable-next-line no-console
     console.error('Health check failed:', error);
-    
+
     return NextResponse.json(
-      { 
-        status: 'unhealthy', 
+      {
+        status: 'unhealthy',
         error: 'Health check failed',
         timestamp: new Date().toISOString(),
       },
-      { status: 503 }
+      { status: 503 },
     );
   }
 }
@@ -46,13 +47,15 @@ export async function GET() {
 // 支持HEAD请求（某些负载均衡器使用）
 export async function HEAD() {
   try {
-    return new NextResponse(null, { 
+    return new NextResponse(null, {
       status: 200,
       headers: {
         'Cache-Control': 'no-cache, no-store, must-revalidate',
       },
     });
   } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('HEAD health check failed:', error);
     return new NextResponse(null, { status: 503 });
   }
 }

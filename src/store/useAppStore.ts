@@ -1,3 +1,4 @@
+import type { Draft } from 'immer';
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
@@ -67,39 +68,54 @@ export const useAppStore = create<AppState>()(
       cart: [],
 
       // Actions
-      setLoading: (loading) => set((state) => ({ ...state, isLoading: loading })),
-
-      toggleTheme: () => set((state) => ({ ...state, theme: state.theme === 'light' ? 'dark' : 'light' })),
-
-      toggleSidebar: () => set((state) => ({ ...state, sidebarOpen: !state.sidebarOpen })),
-
-      setSidebarOpen: (open) => set((state) => ({ ...state, sidebarOpen: open })),
-
-      setUser: (user) => set((state) => ({ ...state, user, isAuthenticated: !!user })),
-
-      setProducts: (products) => set((state) => ({ ...state, products })),
-
-      selectProduct: (product) => set((state) => ({ ...state, selectedProduct: product })),
-
-      addToCart: (product) => set((state) => {
-        const existingItem = state.cart.find((item) => item.id === product.id);
-        if (existingItem) {
-          return {
-            ...state,
-            cart: state.cart.map((item) => (item.id === product.id
-              ? { ...item, quantity: item.quantity + 1 }
-              : item)),
-          };
-        }
-        return { ...state, cart: [...state.cart, { ...product, quantity: 1 }] };
+      setLoading: (loading) => set((state: Draft<AppState>) => {
+        state.isLoading = loading;
       }),
 
-      removeFromCart: (productId) => set((state) => ({
-        ...state,
-        cart: state.cart.filter((item) => item.id !== productId),
-      })),
+      toggleTheme: () => set((state: Draft<AppState>) => {
+        state.theme = state.theme === 'light' ? 'dark' : 'light';
+      }),
 
-      clearCart: () => set((state) => ({ ...state, cart: [] })),
+      toggleSidebar: () => set((state: Draft<AppState>) => {
+        state.sidebarOpen = !state.sidebarOpen;
+      }),
+
+      setSidebarOpen: (open) => set((state: Draft<AppState>) => {
+        state.sidebarOpen = open;
+      }),
+
+      setUser: (user) => set((state: Draft<AppState>) => {
+        state.user = user;
+        state.isAuthenticated = !!user;
+      }),
+
+      setProducts: (products) => set((state: Draft<AppState>) => {
+        state.products = products;
+      }),
+
+      selectProduct: (product) => set((state: Draft<AppState>) => {
+        state.selectedProduct = product;
+      }),
+
+      addToCart: (product) => set((state: Draft<AppState>) => {
+        const existingItem = state.cart.find((item) => item.id === product.id);
+        if (existingItem) {
+          existingItem.quantity += 1;
+        } else {
+          state.cart.push({ ...product, quantity: 1 });
+        }
+      }),
+
+      removeFromCart: (productId) => set((state: Draft<AppState>) => {
+        const index = state.cart.findIndex((item) => item.id === productId);
+        if (index !== -1) {
+          state.cart.splice(index, 1);
+        }
+      }),
+
+      clearCart: () => set((state: Draft<AppState>) => {
+        state.cart = [];
+      }),
     })),
     {
       name: 'jab-store',
