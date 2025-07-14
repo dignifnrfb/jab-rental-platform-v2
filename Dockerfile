@@ -68,7 +68,7 @@ RUN apk add --no-cache \
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
-ENV HOSTNAME="0.0.0.0"
+ENV HOSTNAME=0.0.0.0
 
 # 复制构建产物
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
