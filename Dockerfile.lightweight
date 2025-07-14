@@ -1,0 +1,117 @@
+# JAB租赁平台 - 轻量级Docker构建
+# 专为内存受限环境设计，避免段错误
+
+# 使用更小的基础镜像
+FROM node:18-alpine AS base
+LABEL maintainer="JAB Rental Platform Team"
+LABEL description="JAB租赁平台 - 轻量级构建版本"
+
+# 设置工作目录
+WORKDIR /app
+
+# 安装必要的系统依赖（最小化）
+RUN apk add --no-cache \
+    libc6-compat \
+    && rm -rf /var/cache/apk/*
+
+# 第一阶段：安装依赖
+FROM base AS deps
+
+# 复制依赖文件
+COPY package.json package-lock.json ./
+
+# 配置npm以减少内存使用
+RUN npm config set registry https://registry.npmmirror.com && \
+    npm config set fund false && \
+    npm config set audit false && \
+    npm config set progress false
+
+# 分批安装依赖以减少内存压力
+RUN npm ci --only=production --no-optional --ignore-scripts && \
+    npm cache clean --force
+
+# 第二阶段：构建应用（优化内存使用）
+FROM base AS builder
+
+# 复制依赖文件
+COPY package.json package-lock.json ./
+
+# 配置npm
+RUN npm config set registry https://registry.npmmirror.com && \
+    npm config set fund false && \
+    npm config set audit false && \
+    npm config set progress false
+
+# 安装所有依赖（包括开发依赖）
+RUN npm ci --ignore-scripts && \
+    npm cache clean --force
+
+# 复制源代码（使用.dockerignore优化）
+COPY . .
+
+# 设置环境变量
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_OPTIONS="--max-old-space-size=1024"
+
+# 构建应用（限制Node.js内存使用）
+RUN npm run build
+
+# 第三阶段：运行时镜像（最小化）
+FROM node:18-alpine AS runner
+WORKDIR /app
+
+# 创建非root用户
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+# 只安装运行时必需的工具
+RUN apk add --no-cache \
+    dumb-init \
+    curl \
+    && rm -rf /var/cache/apk/*
+
+# 设置环境变量
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+ENV NODE_OPTIONS="--max-old-space-size=512"
+
+# 复制构建产物
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+
+# 创建必要的目录
+RUN mkdir -p .next/cache && \
+    chown -R nextjs:nodejs .next
+
+# 切换到非root用户
+USER nextjs
+
+# 暴露端口
+EXPOSE 3000
+
+# 轻量级健康检查
+HEALTHCHECK --interval=60s --timeout=5s --start-period=120s --retries=2 \
+    CMD curl -f http://localhost:3000/api/health || exit 1
+
+# 启动应用
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["node", "server.js"]
+
+# 构建信息
+ARG BUILD_DATE
+ARG VCS_REF
+ARG VERSION
+
+LABEL org.label-schema.build-date=$BUILD_DATE \
+      org.label-schema.name="JAB Rental Platform (Lightweight)" \
+      org.label-schema.description="轻量级设备租赁管理系统" \
+      org.label-schema.url="https://github.com/dignifnrfb/jab-rental-platform-v2" \
+      org.label-schema.vcs-ref=$VCS_REF \
+      org.label-schema.vcs-url="https://github.com/dignifnrfb/jab-rental-platform-v2" \
+      org.label-schema.vendor="JAB Team" \
+      org.label-schema.version=$VERSION \
+      org.label-schema.schema-version="1.0"

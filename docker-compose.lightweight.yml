@@ -1,0 +1,188 @@
+# JAB租赁平台 - 轻量级Docker Compose配置
+# 专为内存受限环境设计，避免段错误
+
+version: '3.8'
+
+services:
+  # PostgreSQL数据库（优化内存使用）
+  postgres:
+    image: postgres:15-alpine
+    container_name: jab_postgres_lite
+    environment:
+      POSTGRES_DB: jab_rental
+      POSTGRES_USER: jab_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jab_secure_password_2024}
+      # 优化PostgreSQL内存使用
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - jab_network
+    restart: unless-stopped
+    # 限制资源使用
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+        reservations:
+          memory: 128M
+          cpus: '0.25'
+    # 优化PostgreSQL配置
+    command: [
+      "postgres",
+      "-c", "shared_buffers=64MB",
+      "-c", "effective_cache_size=128MB",
+      "-c", "maintenance_work_mem=16MB",
+      "-c", "checkpoint_completion_target=0.9",
+      "-c", "wal_buffers=4MB",
+      "-c", "default_statistics_target=100",
+      "-c", "random_page_cost=1.1",
+      "-c", "effective_io_concurrency=200",
+      "-c", "work_mem=2MB",
+      "-c", "min_wal_size=1GB",
+      "-c", "max_wal_size=4GB"
+    ]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jab_user -d jab_rental"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Redis缓存（最小配置）
+  redis:
+    image: redis:7-alpine
+    container_name: jab_redis_lite
+    ports:
+      - "6379:6379"
+    networks:
+      - jab_network
+    restart: unless-stopped
+    # 限制资源使用
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: '0.25'
+        reservations:
+          memory: 32M
+          cpus: '0.1'
+    # Redis优化配置
+    command: [
+      "redis-server",
+      "--maxmemory", "32mb",
+      "--maxmemory-policy", "allkeys-lru",
+      "--save", "900", "1",
+      "--save", "300", "10",
+      "--save", "60", "10000"
+    ]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # JAB租赁平台应用（轻量级版本）
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.lightweight
+      args:
+        BUILD_DATE: ${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
+        VCS_REF: ${VCS_REF:-$(git rev-parse --short HEAD)}
+        VERSION: ${VERSION:-latest}
+    container_name: jab_app_lite
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://jab_user:${POSTGRES_PASSWORD:-jab_secure_password_2024}@postgres:5432/jab_rental
+      - REDIS_URL=redis://redis:6379
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-your-super-secret-key-change-in-production}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3000}
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      # Node.js内存优化
+      - NODE_OPTIONS=--max-old-space-size=512
+    ports:
+      - "3000:3000"
+    networks:
+      - jab_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    # 严格限制资源使用
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+          cpus: '1.0'
+        reservations:
+          memory: 384M
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    # 添加临时文件系统以减少磁盘I/O
+    tmpfs:
+      - /tmp:size=100M,noexec,nosuid,nodev
+      - /app/.next/cache:size=50M,noexec,nosuid,nodev
+
+  # Nginx反向代理（轻量级配置）
+  nginx:
+    image: nginx:alpine
+    container_name: jab_nginx_lite
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/ssl:/etc/nginx/ssl:ro
+    networks:
+      - jab_network
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+    # 限制Nginx资源使用
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: '0.25'
+        reservations:
+          memory: 32M
+          cpus: '0.1'
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  jab_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# 全局资源限制
+x-deploy-defaults: &deploy-defaults
+  resources:
+    limits:
+      memory: 2G
+      cpus: '2.0'
