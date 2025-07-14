@@ -127,6 +127,7 @@ export const useRentalStore = create<RentalStore>()(immer((set, get) => ({
           email,
           name: email.split('@')[0] ?? '',
           isVerified: true,
+          role: email === 'admin@jab.com' ? 'admin' : 'user',
         };
         set((state: Draft<RentalStore>) => {
           state.user = mockUser;
