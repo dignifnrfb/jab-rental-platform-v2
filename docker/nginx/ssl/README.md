@@ -1,12 +1,26 @@
 # SSL证书目录
-# 将您的SSL证书文件放在此目录下
-# 
-# 文件结构：
-# - cert.pem (证书文件)
-# - key.pem (私钥文件)
-#
-# 获取免费SSL证书：
-# 1. Let's Encrypt: https://letsencrypt.org/
-# 2. 阿里云SSL证书: https://www.aliyun.com/product/cas
-#
-# 配置完成后，取消注释nginx.conf中的HTTPS配置
+
+这个目录用于存放SSL证书文件。
+
+## 文件说明
+
+- `cert.pem` - SSL证书文件
+- `key.pem` - SSL私钥文件
+
+## 使用说明
+
+1. 如果您有SSL证书，请将证书文件放在此目录下
+2. 更新 `docker/nginx/nginx.conf` 中的HTTPS服务器配置
+3. 取消注释HTTPS服务器块
+
+## 自签名证书生成（仅用于开发环境）
+
+```bash
+# 生成自签名证书（仅用于测试）
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout key.pem \
+  -out cert.pem \
+  -subj "/C=CN/ST=Beijing/L=Beijing/O=JAB/CN=localhost"
+```
+
+**注意**: 生产环境请使用正式的SSL证书（如Let's Encrypt）
