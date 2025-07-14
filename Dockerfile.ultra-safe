@@ -1,0 +1,127 @@
+# JAB租赁平台 - 超安全Dockerfile
+# 使用Ubuntu基础镜像避免Alpine段错误问题
+# 适用于段错误频发的环境
+
+# 第一阶段：依赖安装
+FROM ubuntu:20.04 as deps
+
+# 设置非交互模式
+ENV DEBIAN_FRONTEND=noninteractive
+ENV NODE_VERSION=18.17.0
+
+# 安装系统依赖
+RUN apt-get update && apt-get install -y \
+    curl \
+    wget \
+    gnupg \
+    ca-certificates \
+    build-essential \
+    python3 \
+    python3-pip \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# 安装Node.js (使用NodeSource仓库)
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+    && apt-get install -y nodejs
+
+# 验证安装
+RUN node --version && npm --version
+
+# 设置工作目录
+WORKDIR /app
+
+# 设置npm配置以避免内存问题
+RUN npm config set fund false \
+    && npm config set audit false \
+    && npm config set progress false \
+    && npm config set loglevel error
+
+# 复制package文件
+COPY package*.json ./
+
+# 设置Node.js内存限制
+ENV NODE_OPTIONS="--max-old-space-size=3072 --max-semi-space-size=128"
+
+# 安装依赖（分批安装以减少内存压力）
+RUN npm ci --only=production --no-audit --no-fund --prefer-offline \
+    && npm cache clean --force
+
+# 第二阶段：构建应用
+FROM ubuntu:20.04 as builder
+
+# 设置非交互模式
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 安装Node.js
+RUN apt-get update && apt-get install -y curl \
+    && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# 设置工作目录
+WORKDIR /app
+
+# 设置Node.js内存限制
+ENV NODE_OPTIONS="--max-old-space-size=3072 --max-semi-space-size=128"
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# 复制依赖
+COPY --from=deps /app/node_modules ./node_modules
+COPY package*.json ./
+
+# 复制源代码
+COPY . .
+
+# 安装开发依赖
+RUN npm install --only=development --no-audit --no-fund
+
+# 构建应用
+RUN npm run build
+
+# 第三阶段：运行时镜像
+FROM ubuntu:20.04 as runner
+
+# 设置非交互模式
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 安装运行时依赖
+RUN apt-get update && apt-get install -y \
+    curl \
+    ca-certificates \
+    && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# 创建非root用户
+RUN groupadd --gid 1001 nodejs \
+    && useradd --uid 1001 --gid nodejs --shell /bin/bash --create-home nextjs
+
+# 设置工作目录
+WORKDIR /app
+
+# 设置环境变量
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_OPTIONS="--max-old-space-size=2048"
+ENV HOSTNAME=0.0.0.0
+ENV PORT=3000
+
+# 复制构建产物
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+
+# 切换到非root用户
+USER nextjs
+
+# 暴露端口
+EXPOSE 3000
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:3000/api/health || exit 1
+
+# 启动应用
+CMD ["node", "server.js"]
