@@ -1,20 +1,30 @@
-# Docker构建优化配置
-# 用于解决Alpine包管理器速度慢的问题
+# Docker构建优化配置文件
+# 用于加速Docker构建过程的环境变量设置
 
-# 启用BuildKit（提升构建性能）
+# 启用Docker BuildKit（提升构建性能）
 export DOCKER_BUILDKIT=1
 export COMPOSE_DOCKER_CLI_BUILD=1
 
-# 构建参数优化
-export BUILDKIT_PROGRESS=plain
-export BUILDKIT_INLINE_CACHE=1
-
-# Alpine镜像源配置（国内加速）
+# Alpine镜像源配置（使用阿里云国内源）
 export ALPINE_MIRROR=mirrors.aliyun.com
+
+# npm镜像源配置（使用国内源）
 export NPM_REGISTRY=https://registry.npmmirror.com
 
 # 构建缓存配置
-export DOCKER_BUILDKIT_CACHE_MOUNT_NS=jab-rental-platform
+export BUILDKIT_PROGRESS=plain
+export DOCKER_BUILDKIT_CACHE_MOUNT_NS=jab-app
 
-# 内存限制（避免OOM）
-export DOCKER_DEFAULT_PLATFORM=linux/amd64
+# 内存限制配置（防止构建时内存不足）
+export DOCKER_BUILDKIT_MEMORY_LIMIT=2g
+
+# 并行构建配置
+export DOCKER_BUILDKIT_PARALLEL=4
+
+# 网络超时配置
+export DOCKER_BUILDKIT_TIMEOUT=600
+
+# 使用说明：
+# 1. 在构建前运行: source .dockerbuildrc
+# 2. 或者在脚本中引用: . ./.dockerbuildrc
+# 3. 然后执行: docker build -t jab-app .

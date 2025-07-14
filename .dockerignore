@@ -1,128 +1,110 @@
-# Dependencies
-node_modules/
-.pnp
-.pnp.js
+# 忽略不必要的文件，减少Docker构建上下文大小
 
-# Testing
-coverage/
-
-# Next.js
-.next/
-out/
-
-# Production
-build
-
-# Misc
-.DS_Store
-*.pem
-
-# Debug
+# 依赖目录
+node_modules
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Local env files
-.env*.local
+# Next.js构建输出
+.next/
+out/
+
+# 生产构建
+build/
+dist/
+
+# 环境变量文件
 .env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
-# Vercel
-.vercel
-
-# TypeScript
-*.tsbuildinfo
-next-env.d.ts
-
-# Prisma
-prisma/migrations/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-Thumbs.db
-
-# Logs
-logs
+# 日志文件
 *.log
+logs/
 
-# Runtime data
-pids
+# 运行时文件
 *.pid
 *.seed
 *.pid.lock
 
-# PWA files
-public/sw.js
-public/workbox-*.js
-public/worker-*.js
-public/sw.js.map
-public/workbox-*.js.map
-public/worker-*.js.map
-
-# Temporary folders
-tmp/
-temp/
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-
-# Debug
+# 覆盖率目录
+coverage/
 .nyc_output
 
-# Dependency directories
-jspm_packages/
+# 依赖锁定文件（保留package-lock.json）
+yarn.lock
+pnpm-lock.yaml
 
-# Optional npm cache directory
-.npm
+# IDE和编辑器文件
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 
-# Optional eslint cache
-.eslintcache
+# 操作系统文件
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
 
-# Output of 'npm pack'
-*.tgz
+# Git相关
+.git/
+.gitignore
+.gitattributes
 
-# Yarn Integrity file
-.yarn-integrity
+# 测试文件
+test/
+tests/
+__tests__/
+*.test.js
+*.test.ts
+*.spec.js
+*.spec.ts
 
-# parcel-bundler cache (https://parceljs.org/)
-.cache
-.parcel-cache
+# 文档文件
+README.md
+CHANGELOG.md
+LICENSE
+*.md
 
-# next.js build output
-.next
+# 配置文件
+.eslintrc*
+.prettierrc*
+.editorconfig
+.husky/
+commitlint.config.js
 
-# nuxt.js build output
-.nuxt
+# Docker相关
+Dockerfile*
+docker-compose*.yml
+.dockerignore
 
-# vuepress build output
-.vuepress/dist
+# 部署脚本
+deploy.sh
+*.sh
 
-# Serverless directories
-.serverless
-
-# FuseBox cache
-.fusebox/
-
-# DynamoDB Local files
-.dynamodb/
-
-# TernJS port file
-.tern-port
-
-# Stores VSCode versions used for testing VSCode extensions
-.vscode-test
-
-# Temporary folders
+# 临时文件
 tmp/
 temp/
+.tmp/
+
+# 缓存目录
+.cache/
+.parcel-cache/
+
+# TypeScript编译输出
+*.tsbuildinfo
+
+# Prisma
+prisma/migrations/
+
+# 开发工具
+.trae/
+.claude/
