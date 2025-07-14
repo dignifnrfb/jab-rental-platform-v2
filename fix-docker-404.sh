@@ -50,8 +50,42 @@ log_info "清理Docker缓存和未使用的镜像..."
 docker system prune -f
 docker image prune -f
 
+log_info "检查系统资源..."
+# 检查可用内存
+MEM_FREE=$(free -m | awk 'NR==2{printf "%.0f", $4}')
+if [ "$MEM_FREE" -lt 1024 ]; then
+    log_warning "可用内存不足1GB，可能导致构建失败"
+    log_info "建议先运行 ./fix-docker-segfault.sh 进行系统优化"
+    read -p "是否继续构建? (y/N): " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        log_info "构建已取消，请先优化系统资源"
+        exit 0
+    fi
+fi
+
 log_info "重新构建应用容器（无缓存）..."
-docker-compose build --no-cache app
+# 设置构建优化参数
+export DOCKER_BUILDKIT=1
+export COMPOSE_DOCKER_CLI_BUILD=1
+
+# 使用内存限制防止段错误
+docker-compose build --no-cache app || {
+    log_error "构建失败，可能是内存不足导致的段错误"
+    log_info "正在尝试备用构建方案..."
+    
+    # 备用方案：清理更多资源后重试
+    docker system prune -a -f
+    docker volume prune -f
+    
+    # 重新尝试构建
+    docker-compose build --no-cache app || {
+        log_error "备用构建方案也失败了"
+        log_info "请运行 ./fix-docker-segfault.sh 进行完整的故障排除"
+        exit 1
+    }
+    log_success "备用构建方案成功"
+}
 
 log_info "启动所有服务..."
 docker-compose up -d
@@ -99,3 +133,4 @@ log_info "1. 服务器防火墙设置"
 log_info "2. 域名DNS解析"
 log_info "3. SSL证书配置"
 log_info "4. 查看完整日志: docker-compose logs"
+log_info "5. 如果出现段错误，运行: ./fix-docker-segfault.sh"
