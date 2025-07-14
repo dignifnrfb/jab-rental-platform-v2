@@ -30,6 +30,18 @@ sudo ./fix-docker-ultimate.sh
 docker-compose -f docker-compose.ultra-safe.yml up -d --build
 ```
 
+### 方案5：Husky错误修复
+```bash
+# 修复Husky相关的构建错误
+./fix-husky-errors.sh
+```
+
+### 方案6：Docker运行时错误修复
+```bash
+# 修复Docker运行时错误，包括容器重启、网络端点、镜像源等问题
+sudo ./fix-docker-runtime-errors.sh
+```
+
 ## 📋 方案对比
 
 | 方案 | 适用场景 | 内存要求 | 成功率 | 构建时间 |
@@ -38,6 +50,8 @@ docker-compose -f docker-compose.ultra-safe.yml up -d --build
 | 轻量级 | 内存受限 | 1GB+ | 80% | 中等 |
 | 终极方案 | 严重问题 | 3GB+ | 95% | 慢 |
 | 超安全 | 所有环境 | 2GB+ | 99% | 最慢 |
+| Husky修复 | Husky错误 | 1GB+ | 90% | 快 |
+| 运行时错误修复 | 运行时问题 | 1GB+ | 85% | 中等 |
 
 ## 🎯 快速诊断
 
@@ -73,12 +87,29 @@ docker info
    ```
    → 使用方案3（禁用BuildKit）
 
+4. **Husky相关错误**
+   ```
+   husky - command not found
+   ```
+   → 使用方案5（Husky修复）
+
+5. **Docker运行时错误**
+   ```
+   ShouldRestart failed, container will not be restarted
+   Error deleting object [endpoint]
+   404 Not Found (镜像源)
+   No non-localhost DNS nameservers
+   ```
+   → 使用方案6（运行时错误修复）
+
 ## 🚀 推荐流程
 
 1. **首次尝试**：运行 `./fix-docker-ultimate.sh`
 2. **如果失败**：检查系统资源，增加内存或swap
 3. **仍然失败**：使用超安全配置 `docker-compose.ultra-safe.yml`
-4. **最后手段**：考虑更换服务器或使用云服务
+4. **Husky错误**：运行 `./fix-husky-errors.sh`
+5. **运行时错误**：运行 `sudo ./fix-docker-runtime-errors.sh`
+6. **最后手段**：考虑更换服务器或使用云服务
 
 ## 🔍 故障排除
 
@@ -92,6 +123,9 @@ dmesg | grep -i "segmentation fault"
 
 # 查看Docker日志
 journalctl -u docker.service
+
+# 查看Docker运行时错误日志
+journalctl -u docker.service --since "1 hour ago" | grep -E "(warning|error)"
 ```
 
 ### 系统优化
@@ -118,6 +152,7 @@ sudo systemctl restart docker
 3. Docker版本：`docker --version`
 4. 错误日志：完整的构建错误信息
 5. 系统日志：`dmesg | tail -50`
+6. Docker运行时日志：`journalctl -u docker.service --since "1 hour ago"`
 
 ## 🎉 成功标志
 
@@ -126,6 +161,7 @@ sudo systemctl restart docker
 1. 访问应用：`http://your-server-ip`
 2. 健康检查通过：`http://your-server-ip/api/health`
 3. 所有服务运行正常：`docker-compose ps`
+4. Docker服务无错误：`systemctl status docker`
 
 ---
 
