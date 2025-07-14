@@ -31,11 +31,12 @@ RUN node --version && npm --version
 # 设置工作目录
 WORKDIR /app
 
-# 设置npm配置以避免内存问题
+# 设置npm配置以避免内存问题和脚本执行
 RUN npm config set fund false \
     && npm config set audit false \
     && npm config set progress false \
-    && npm config set loglevel error
+    && npm config set loglevel error \
+    && npm config set ignore-scripts true
 
 # 复制package文件
 COPY package*.json ./
@@ -43,8 +44,8 @@ COPY package*.json ./
 # 设置Node.js内存限制
 ENV NODE_OPTIONS="--max-old-space-size=3072 --max-semi-space-size=128"
 
-# 安装依赖（分批安装以减少内存压力）
-RUN npm ci --only=production --no-audit --no-fund --prefer-offline \
+# 安装依赖（禁用脚本执行以避免husky错误）
+RUN npm ci --only=production --no-audit --no-fund --prefer-offline --ignore-scripts \
     && npm cache clean --force
 
 # 第二阶段：构建应用
@@ -73,8 +74,11 @@ COPY package*.json ./
 # 复制源代码
 COPY . .
 
-# 安装开发依赖
-RUN npm install --only=development --no-audit --no-fund
+# 设置npm配置禁用脚本执行
+RUN npm config set ignore-scripts true
+
+# 安装开发依赖（禁用脚本执行）
+RUN npm install --only=development --no-audit --no-fund --ignore-scripts
 
 # 构建应用
 RUN npm run build
