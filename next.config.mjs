@@ -5,6 +5,10 @@ const nextConfig = {
   // Docker部署配置
   output: 'standalone',
   
+  // 确保正确的路由处理
+  trailingSlash: false,
+  skipTrailingSlashRedirect: true,
+  
   // 性能优化配置
   poweredByHeader: false,
   compress: true,
@@ -101,6 +105,16 @@ const nextConfig = {
             value: 'public, max-age=31536000, immutable',
           },
         ],
+      },
+    ]
+  },
+  
+  // 确保API路由正确处理
+  async rewrites() {
+    return [
+      {
+        source: '/api/:path*',
+        destination: '/api/:path*',
       },
     ]
   },
