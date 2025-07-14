@@ -64,30 +64,42 @@ sudo systemctl restart docker
 docker network create --driver bridge custom-network
 ```
 
-### 3. 镜像源404错误
+### 3. 镜像源404错误和DNS解析失败
 
 #### 错误信息
 ```
 trying next host after status: 404 Not Found host=0vmzj3q6.mirror.aliyuncs.com
+dial tcp: lookup hub-mirror.c.163.com on 223.5.5.5:53: no such host
+dial tcp: lookup mirror.baidubce.com on 114.114.114.114:53: no such host
+dial tcp: lookup docker.mirrors.ustc.edu.cn on 114.114.114.114:53: no such host
 ```
 
 #### 原因分析
-- 阿里云镜像源配置错误
-- 镜像不存在或已被删除
-- 网络连接问题
-- 镜像源服务不可用
+- **DNS解析失败**: 镜像源域名无法解析（最常见）
+- **网络环境限制**: 某些网络环境下无法访问特定镜像源
+- **镜像源服务异常**: 镜像源服务器临时不可用
+- **DNS服务器问题**: 当前DNS服务器无法解析镜像源域名
+- **阿里云镜像源配置错误**: 镜像不存在或已被删除
 
 #### 解决方案
+
+**方案1: 使用增强版修复脚本（推荐）**
 ```bash
-# 更新Docker镜像源配置
+# 运行增强版修复脚本，自动检测可用镜像源
+sudo ./fix-docker-runtime-errors.sh
+```
+
+**方案2: 手动配置可靠的镜像源**
+```bash
+# 更新Docker镜像源配置（使用更可靠的源）
 sudo tee /etc/docker/daemon.json > /dev/null <<EOF
 {
   "registry-mirrors": [
-    "https://docker.mirrors.ustc.edu.cn",
-    "https://hub-mirror.c.163.com",
-    "https://mirror.baidubce.com",
-    "https://ccr.ccs.tencentyun.com"
-  ]
+    "https://registry.cn-hangzhou.aliyuncs.com",
+    "https://ccr.ccs.tencentyun.com",
+    "https://docker.m.daocloud.io"
+  ],
+  "dns": ["8.8.8.8", "114.114.114.114", "223.5.5.5"]
 }
 EOF
 
@@ -96,6 +108,42 @@ sudo systemctl restart docker
 
 # 测试镜像拉取
 docker pull hello-world
+```
+
+**方案3: 测试镜像源可用性**
+```bash
+# 测试镜像源连接性
+function test_registry() {
+    local registry=$1
+    echo "测试镜像源: $registry"
+    if curl -s --connect-timeout 5 "$registry/v2/" > /dev/null; then
+        echo "✓ $registry 可用"
+        return 0
+    else
+        echo "✗ $registry 不可用"
+        return 1
+    fi
+}
+
+# 测试各个镜像源
+test_registry "https://registry.cn-hangzhou.aliyuncs.com"
+test_registry "https://ccr.ccs.tencentyun.com"
+test_registry "https://docker.m.daocloud.io"
+test_registry "https://hub-mirror.c.163.com"
+test_registry "https://mirror.baidubce.com"
+```
+
+**方案4: 回退到官方Docker Hub**
+```bash
+# 如果所有国内镜像源都不可用，使用官方源
+sudo tee /etc/docker/daemon.json > /dev/null <<EOF
+{
+  "dns": ["8.8.8.8", "1.1.1.1", "114.114.114.114"]
+}
+EOF
+
+# 重启Docker服务
+sudo systemctl restart docker
 ```
 
 ### 4. DNS解析错误
