@@ -2,9 +2,9 @@
 # 解决Docker镜像拉取失败问题
 
 services:
-  # PostgreSQL 数据库 - 使用阿里云镜像
+  # PostgreSQL 数据库 - 使用Docker Hub官方镜像
   postgres:
-    image: registry.cn-hangzhou.aliyuncs.com/library/postgres:15-alpine
+    image: postgres:15-alpine
     container_name: jab-postgres
     environment:
       POSTGRES_DB: jab_rental_db
@@ -34,9 +34,9 @@ services:
       timeout: 10s
       retries: 3
 
-  # Redis 缓存 - 使用阿里云镜像
+  # Redis 缓存 - 使用Docker Hub官方镜像
   redis:
-    image: registry.cn-hangzhou.aliyuncs.com/library/redis:7-alpine
+    image: redis:7-alpine
     container_name: jab-redis
     command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
     ports:
@@ -100,9 +100,9 @@ services:
     volumes:
       - app_uploads:/app/uploads
 
-  # Nginx 反向代理 - 使用阿里云镜像
+  # Nginx 反向代理 - 使用Docker Hub官方镜像
   nginx:
-    image: registry.cn-hangzhou.aliyuncs.com/library/nginx:alpine
+    image: nginx:alpine
     container_name: jab-nginx
     ports:
       - "80:80"
@@ -130,9 +130,9 @@ services:
       timeout: 10s
       retries: 3
 
-  # 监控服务 (可选) - 使用阿里云镜像
+  # 监控服务 (可选) - 使用Docker Hub官方镜像
   watchtower:
-    image: registry.cn-hangzhou.aliyuncs.com/library/containrrr/watchtower
+    image: containrrr/watchtower
     container_name: jab-watchtower
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
