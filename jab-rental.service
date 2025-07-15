@@ -1,0 +1,64 @@
+[Unit]
+# jab-rental.service - JAB租赁平台系统服务配置
+# 用于systemd管理JAB租赁平台应用
+
+Description=JAB Rental Platform - Next.js Application
+Documentation=https://github.com/dignifnrfb/jab-rental-platform-v2
+After=network.target postgresql.service redis-server.service
+Wants=postgresql.service redis-server.service
+Requires=network.target
+
+[Service]
+# 服务类型
+Type=forking
+
+# 用户和组
+User=jab
+Group=jab
+
+# 工作目录
+WorkingDirectory=/var/www/jab
+
+# 环境变量
+Environment=NODE_ENV=production
+Environment=PORT=3000
+EnvironmentFile=/var/www/jab/.env
+
+# 执行命令
+ExecStart=/usr/bin/pm2 start /var/www/jab/ecosystem.config.js --env production
+ExecReload=/usr/bin/pm2 reload /var/www/jab/ecosystem.config.js --env production
+ExecStop=/usr/bin/pm2 stop jab-rental
+
+# 进程管理
+PIDFile=/var/www/jab/.pm2/pm2.pid
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStartSec=60
+TimeoutStopSec=30
+TimeoutReloadSec=30
+
+# 重启策略
+Restart=always
+RestartSec=10
+StartLimitInterval=60
+StartLimitBurst=3
+
+# 安全配置
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/www/jab /var/log/jab /tmp
+
+# 资源限制
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# 标准输出和错误
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=jab-rental
+
+[Install]
+WantedBy=multi-user.target
+Alias=jab.service
