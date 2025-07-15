@@ -1,20 +1,20 @@
 #!/bin/bash
 
-# Docker服务紧急修复脚本
-# 专门解决Docker服务启动失败和网络配置问题
-# 作者: JAB租赁平台团队
-# 版本: 1.1.0 - 增强版
-# 日期: 2025-01-14
-# 更新: 增强daemon.json语法检测和DNS诊断功能
-
-set -e
+# Docker服务紧急修复脚本 - 增强版 v1.1.0
+# 专门解决Docker服务启动失败问题
+# 支持自动诊断和修复以下问题:
+# 1. daemon.json语法错误
+# 2. DNS服务器连接失败
+# 3. Docker服务启动失败
+# 4. 网络连接问题
+# 5. 系统资源不足
+# 6. 内核模块和cgroup问题
 
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-PURPLE='\033[0;35m'
 NC='\033[0m' # No Color
 
 # 日志函数
@@ -34,11 +34,7 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-log_debug() {
-    echo -e "${PURPLE}[DEBUG]${NC} $1"
-}
-
-# 检查是否为root用户
+# 检查root权限
 check_root() {
     if [[ $EUID -ne 0 ]]; then
         log_error "此脚本需要root权限运行"
@@ -48,34 +44,36 @@ check_root() {
 }
 
 # 创建备份目录
-create_backup() {
-    local backup_dir="/tmp/docker-emergency-backup-$(date +%Y%m%d-%H%M%S)"
-    mkdir -p "$backup_dir"
-    
-    # 备份关键配置文件
-    [[ -f /etc/docker/daemon.json ]] && cp /etc/docker/daemon.json "$backup_dir/"
-    [[ -f /etc/resolv.conf ]] && cp /etc/resolv.conf "$backup_dir/"
-    [[ -f /etc/systemd/system/docker.service ]] && cp /etc/systemd/system/docker.service "$backup_dir/"
-    
-    echo "$backup_dir" > /tmp/docker-emergency-backup-path
-    log_success "配置文件已备份到: $backup_dir"
+create_backup_dir() {
+    BACKUP_DIR="/tmp/docker-emergency-backup-$(date +%Y%m%d-%H%M%S)"
+    mkdir -p "$BACKUP_DIR"
+    log_success "配置文件已备份到: $BACKUP_DIR"
 }
 
-# 检查Docker服务详细状态
-check_docker_service_status() {
+# 检查Docker服务状态
+check_docker_service() {
     log_info "=== Docker服务详细诊断 ==="
     
-    # 检查Docker服务状态
     log_info "1. Docker服务状态:"
-    systemctl status docker.service --no-pager -l || true
+    systemctl status docker --no-pager -l || true
     echo
     
-    # 检查Docker服务日志
-    log_info "2. Docker服务最近日志:"
-    journalctl -xeu docker.service --no-pager -l --since "10 minutes ago" || true
+    log_info "2. Docker服务最近日志 (过去1小时):"
+    journalctl -u docker --since "1 hour ago" --no-pager -l || log_warning "无法获取Docker服务日志"
     echo
     
-    # 检查Docker socket
+    log_info "2.1 今天所有Docker启动失败日志:"
+    journalctl -u docker --since "today" --grep="Failed to start" --no-pager -l || log_info "今天无Docker启动失败日志"
+    echo
+    
+    log_info "2.2 containerd服务日志:"
+    journalctl -u containerd --since "1 hour ago" --no-pager -l | tail -10 || log_warning "无法获取containerd日志"
+    echo
+    
+    log_info "2.3 系统启动日志中的Docker错误:"
+    journalctl --since "today" --grep="docker" --grep="error\|failed\|Error\|Failed" --no-pager -l | tail -10 || log_info "无相关错误日志"
+    echo
+    
     log_info "3. Docker socket状态:"
     if [[ -S /var/run/docker.sock ]]; then
         log_success "Docker socket存在"
@@ -85,9 +83,29 @@ check_docker_service_status() {
     fi
     echo
     
-    # 检查Docker进程
     log_info "4. Docker相关进程:"
-    ps aux | grep -E "(docker|containerd)" | grep -v grep || log_warning "未找到Docker进程"
+    ps aux | grep -E "(docker|containerd)" | grep -v grep || log_warning "未找到Docker相关进程"
+    echo
+    
+    log_info "5. Docker关键文件检查:"
+    local docker_files=(
+        "/usr/bin/dockerd"
+        "/run/containerd/containerd.sock"
+        "/var/lib/docker"
+        "/var/lib/docker/containers"
+        "/var/lib/docker/image"
+        "/var/lib/docker/overlay2"
+        "/etc/docker"
+    )
+    
+    for file in "${docker_files[@]}"; do
+        if [[ -e "$file" ]]; then
+            log_success "存在: $file"
+            ls -la "$file" 2>/dev/null | head -1
+        else
+            log_error "缺失: $file"
+        fi
+    done
     echo
 }
 
@@ -95,56 +113,46 @@ check_docker_service_status() {
 check_system_resources() {
     log_info "=== 系统资源检查 ==="
     
-    # 检查内存使用
     log_info "1. 内存使用情况:"
     free -h
     echo
     
-    # 检查磁盘空间
     log_info "2. 磁盘空间使用:"
-    df -h /var/lib/docker 2>/dev/null || df -h /
+    df -h | grep -E "(Filesystem|/dev/)"
     echo
     
-    # 检查系统负载
     log_info "3. 系统负载:"
     uptime
     echo
 }
 
-# 检查网络配置
+# 增强的网络配置检查
 check_network_config() {
     log_info "=== 网络配置检查 ==="
     
-    # 检查网络接口
     log_info "1. 网络接口状态:"
-    ip addr show || ifconfig -a
+    ip addr show
     echo
     
-    # 检查路由表
     log_info "2. 路由表:"
-    ip route show || route -n
+    ip route show
     echo
     
-    # 检查DNS配置
     log_info "3. DNS配置:"
     cat /etc/resolv.conf
     echo
     
-    # 详细的网络连接测试
     log_info "4. 详细网络连接测试:"
     
-    # 测试多个DNS服务器
-    local dns_servers=("8.8.8.8" "114.114.114.114" "223.5.5.5" "1.1.1.1" "208.67.222.222")
-    local working_dns_count=0
-    
+    # 测试多个DNS服务器的可达性和解析功能
+    local dns_servers=("8.8.8.8" "114.114.114.114" "223.5.5.5" "1.1.1.1")
     for dns in "${dns_servers[@]}"; do
         log_info "测试DNS服务器: $dns"
-        if timeout 5 ping -c 1 -W 3 "$dns" >/dev/null 2>&1; then
+        if ping -c 1 -W 3 "$dns" >/dev/null 2>&1; then
             log_success "DNS服务器可达: $dns"
-            ((working_dns_count++))
             
             # 测试DNS解析功能
-            if timeout 5 nslookup google.com "$dns" >/dev/null 2>&1; then
+            if nslookup google.com "$dns" >/dev/null 2>&1; then
                 log_success "DNS解析功能正常: $dns"
             else
                 log_warning "DNS解析功能异常: $dns"
@@ -153,44 +161,180 @@ check_network_config() {
             log_error "DNS服务器不可达: $dns"
         fi
     done
+    echo
     
-    if [[ $working_dns_count -eq 0 ]]; then
-        log_error "所有DNS服务器都不可达，网络连接存在严重问题"
-        
-        # 检查网络接口是否up
-        log_info "检查网络接口状态..."
-        local active_interfaces
-        active_interfaces=$(ip link show up | grep -E '^[0-9]+:' | grep -v 'lo:' | wc -l)
-        
-        if [[ $active_interfaces -eq 0 ]]; then
-            log_error "没有活动的网络接口"
-        else
-            log_info "发现 $active_interfaces 个活动网络接口"
-        fi
-        
-        # 检查默认路由
-        if ip route show default >/dev/null 2>&1; then
-            log_info "默认路由存在:"
-            ip route show default
-        else
-            log_error "没有默认路由"
-        fi
-    else
-        log_success "发现 $working_dns_count 个可用的DNS服务器"
-    fi
-    
-    # 测试常用网站连接
-    log_info "5. 测试常用网站连接:"
-    local test_sites=("google.com" "baidu.com" "github.com")
-    
-    for site in "${test_sites[@]}"; do
-        if timeout 10 curl -s --connect-timeout 5 "https://$site" >/dev/null 2>&1; then
-            log_success "网站可访问: $site"
-        else
-            log_warning "网站不可访问: $site"
+    log_info "5. 网络接口详细状态:"
+    for interface in $(ip link show | grep -E '^[0-9]+:' | cut -d: -f2 | tr -d ' '); do
+        if [[ "$interface" != "lo" ]]; then
+            log_info "接口 $interface 状态:"
+            ip link show "$interface"
+            ethtool "$interface" 2>/dev/null | grep -E "(Link detected|Speed|Duplex)" || true
         fi
     done
+    echo
     
+    log_info "6. 默认路由检查:"
+    if ip route show default >/dev/null 2>&1; then
+        log_success "默认路由存在"
+        ip route show default
+    else
+        log_error "默认路由不存在"
+    fi
+    echo
+    
+    log_info "7. 常用网站连接测试:"
+    local test_sites=("google.com" "github.com" "docker.io" "registry-1.docker.io")
+    for site in "${test_sites[@]}"; do
+        if ping -c 1 -W 5 "$site" >/dev/null 2>&1; then
+            log_success "可以连接到: $site"
+        else
+            log_error "无法连接到: $site"
+        fi
+    done
+    echo
+}
+
+# 分析Docker启动失败原因
+analyze_docker_failure() {
+    log_info "=== Docker启动失败原因分析 ==="
+    
+    # 检查常见的Docker启动失败原因
+    log_info "1. 分析Docker启动失败的可能原因:"
+    
+    # 检查端口占用
+    log_info "1.1 检查Docker相关端口占用:"
+    local docker_ports=("2375" "2376" "2377")
+    for port in "${docker_ports[@]}"; do
+        if netstat -tlnp 2>/dev/null | grep ":$port " >/dev/null; then
+            log_warning "端口 $port 被占用:"
+            netstat -tlnp | grep ":$port "
+        else
+            log_info "端口 $port 未被占用"
+        fi
+    done
+    echo
+    
+    # 检查磁盘空间
+    log_info "1.2 检查关键目录磁盘空间:"
+    local critical_dirs=("/var/lib/docker" "/tmp" "/var/log")
+    for dir in "${critical_dirs[@]}"; do
+        if [[ -d "$dir" ]]; then
+            local usage
+            usage=$(df "$dir" | tail -1 | awk '{print $5}' | sed 's/%//')
+            if [[ $usage -gt 90 ]]; then
+                log_error "$dir 磁盘使用率过高: ${usage}%"
+            elif [[ $usage -gt 80 ]]; then
+                log_warning "$dir 磁盘使用率较高: ${usage}%"
+            else
+                log_success "$dir 磁盘使用率正常: ${usage}%"
+            fi
+        fi
+    done
+    echo
+    
+    # 检查内存不足
+    log_info "1.3 检查系统内存状态:"
+    local available_mem
+    available_mem=$(free -m | awk 'NR==2{printf "%.1f", $7/1024}')
+    if (( $(echo "$available_mem < 0.5" | bc -l) )); then
+        log_error "可用内存不足: ${available_mem}GB"
+    elif (( $(echo "$available_mem < 1.0" | bc -l) )); then
+        log_warning "可用内存较低: ${available_mem}GB"
+    else
+        log_success "可用内存充足: ${available_mem}GB"
+    fi
+    echo
+    
+    # 检查systemd服务依赖
+    log_info "1.4 检查systemd服务依赖:"
+    
+    # 检查containerd服务状态
+    if systemctl is-active containerd >/dev/null 2>&1; then
+        log_success "containerd服务运行正常"
+    else
+        log_error "containerd服务未运行"
+        log_info "containerd服务状态:"
+        systemctl status containerd --no-pager -l || true
+    fi
+    
+    # 检查docker.socket状态
+    if systemctl is-active docker.socket >/dev/null 2>&1; then
+        log_success "docker.socket运行正常"
+    else
+        log_warning "docker.socket未运行"
+        log_info "docker.socket状态:"
+        systemctl status docker.socket --no-pager -l || true
+    fi
+    echo
+    
+    # 检查SELinux状态（如果存在）
+    log_info "1.5 检查SELinux状态:"
+    if command -v getenforce >/dev/null 2>&1; then
+        local selinux_status
+        selinux_status=$(getenforce 2>/dev/null || echo "未知")
+        log_info "SELinux状态: $selinux_status"
+        if [[ "$selinux_status" == "Enforcing" ]]; then
+            log_warning "SELinux处于强制模式，可能影响Docker运行"
+        fi
+    else
+        log_info "系统未安装SELinux"
+    fi
+    echo
+    
+    # 检查AppArmor状态（如果存在）
+    log_info "1.6 检查AppArmor状态:"
+    if command -v aa-status >/dev/null 2>&1; then
+        log_info "AppArmor状态:"
+        aa-status 2>/dev/null | head -5 || log_info "无法获取AppArmor状态"
+    else
+        log_info "系统未安装AppArmor"
+    fi
+    echo
+    
+    # 检查cgroup支持
+    log_info "1.7 检查cgroup支持:"
+    if [[ -d /sys/fs/cgroup ]]; then
+        log_success "cgroup文件系统存在"
+        
+        # 检查cgroup v1/v2
+        if [[ -f /sys/fs/cgroup/cgroup.controllers ]]; then
+            log_info "检测到cgroup v2"
+        elif [[ -d /sys/fs/cgroup/memory ]]; then
+            log_info "检测到cgroup v1"
+        else
+            log_warning "cgroup版本检测异常"
+        fi
+        
+        # 检查关键cgroup控制器
+        local controllers=("memory" "cpu" "cpuset" "blkio")
+        for controller in "${controllers[@]}"; do
+            if [[ -d "/sys/fs/cgroup/$controller" ]] || grep -q "$controller" /sys/fs/cgroup/cgroup.controllers 2>/dev/null; then
+                log_success "cgroup控制器可用: $controller"
+            else
+                log_warning "cgroup控制器不可用: $controller"
+            fi
+        done
+    else
+        log_error "cgroup文件系统不存在"
+    fi
+    echo
+    
+    # 检查内核模块
+    log_info "1.8 检查Docker所需内核模块:"
+    local required_modules=("overlay" "br_netfilter" "iptable_nat")
+    for module in "${required_modules[@]}"; do
+        if lsmod | grep -q "^$module"; then
+            log_success "内核模块已加载: $module"
+        else
+            log_warning "内核模块未加载: $module"
+            # 尝试加载模块
+            if modprobe "$module" 2>/dev/null; then
+                log_success "成功加载内核模块: $module"
+            else
+                log_error "无法加载内核模块: $module"
+            fi
+        fi
+    done
     echo
 }
 
@@ -198,271 +342,205 @@ check_network_config() {
 check_docker_config() {
     log_info "=== Docker配置文件检查 ==="
     
+    # 检查daemon.json文件
     local daemon_json="/etc/docker/daemon.json"
     
+    log_info "1. 检查daemon.json语法:"
     if [[ -f "$daemon_json" ]]; then
-        log_info "1. daemon.json存在，检查语法:"
+        log_info "daemon.json文件存在，检查语法..."
         
         # 详细的JSON语法检查
-        local json_error_output
-        json_error_output=$(python3 -m json.tool "$daemon_json" 2>&1)
-        local json_exit_code=$?
-        
-        if [[ $json_exit_code -eq 0 ]]; then
+        if python3 -m json.tool "$daemon_json" >/dev/null 2>&1; then
             log_success "daemon.json语法正确"
-            log_info "当前配置内容:"
-            cat "$daemon_json"
-            
-            # 检查常见配置问题
-            check_daemon_json_content "$daemon_json"
         else
-            log_error "daemon.json语法错误"
-            log_error "详细错误信息: $json_error_output"
-            log_info "错误的配置内容:"
-            cat "$daemon_json"
+            log_error "daemon.json语法错误！"
+            log_info "错误详情:"
+            python3 -m json.tool "$daemon_json" 2>&1 || true
             
-            # 尝试识别常见语法错误
-            identify_json_syntax_errors "$daemon_json"
+            # 备份损坏的文件
+            cp "$daemon_json" "$BACKUP_DIR/daemon.json.broken"
+            log_info "已备份损坏的daemon.json到: $BACKUP_DIR/daemon.json.broken"
         fi
+        
+        log_info "当前daemon.json内容:"
+        cat "$daemon_json"
+        echo
+        
+        # 检查daemon.json内容的有效性
+        log_info "2. 检查daemon.json配置有效性:"
+        
+        # 检查镜像源配置
+        if grep -q "registry-mirrors" "$daemon_json" 2>/dev/null; then
+            log_info "发现镜像源配置:"
+            grep -A 5 "registry-mirrors" "$daemon_json" || true
+        else
+            log_warning "未配置镜像源"
+        fi
+        
+        # 检查DNS配置
+        if grep -q "dns" "$daemon_json" 2>/dev/null; then
+            log_info "发现DNS配置:"
+            grep -A 3 "dns" "$daemon_json" || true
+        else
+            log_warning "未配置DNS"
+        fi
+        
+        # 检查常见的JSON语法错误
+        log_info "3. 检查常见JSON语法问题:"
+        
+        # 检查尾随逗号
+        if grep -E ',\s*[}\]]' "$daemon_json" >/dev/null 2>&1; then
+            log_error "发现尾随逗号错误"
+        else
+            log_success "无尾随逗号错误"
+        fi
+        
+        # 检查引号匹配
+        local quote_count
+        quote_count=$(grep -o '"' "$daemon_json" | wc -l)
+        if (( quote_count % 2 != 0 )); then
+            log_error "引号不匹配"
+        else
+            log_success "引号匹配正确"
+        fi
+        
+        # 检查括号匹配
+        local open_braces
+        local close_braces
+        open_braces=$(grep -o '{' "$daemon_json" | wc -l)
+        close_braces=$(grep -o '}' "$daemon_json" | wc -l)
+        if [[ $open_braces -ne $close_braces ]]; then
+            log_error "大括号不匹配: 开括号$open_braces个，闭括号$close_braces个"
+        else
+            log_success "大括号匹配正确"
+        fi
+        
     else
-        log_warning "daemon.json不存在"
+        log_warning "daemon.json文件不存在"
     fi
     echo
 }
 
-# 检查daemon.json内容的常见问题
-check_daemon_json_content() {
-    local daemon_json="$1"
-    
-    log_info "2. 检查配置内容常见问题:"
-    
-    # 检查registry-mirrors配置
-    if grep -q "registry-mirrors" "$daemon_json"; then
-        log_info "发现registry-mirrors配置，检查镜像源有效性..."
-        
-        # 提取镜像源地址并测试
-        local mirrors
-        mirrors=$(python3 -c "
-import json
-with open('$daemon_json', 'r') as f:
-    data = json.load(f)
-    mirrors = data.get('registry-mirrors', [])
-    for mirror in mirrors:
-        print(mirror)
-" 2>/dev/null || echo "")
-        
-        if [[ -n "$mirrors" ]]; then
-            while IFS= read -r mirror; do
-                if [[ -n "$mirror" ]]; then
-                    log_info "测试镜像源: $mirror"
-                    if curl -s --connect-timeout 5 "$mirror/v2/" >/dev/null 2>&1; then
-                        log_success "镜像源可访问: $mirror"
-                    else
-                        log_warning "镜像源不可访问: $mirror"
-                    fi
-                fi
-            done <<< "$mirrors"
-        fi
-    fi
-    
-    # 检查DNS配置
-    if grep -q '"dns"' "$daemon_json"; then
-        log_info "发现DNS配置，检查DNS服务器有效性..."
-        local dns_servers
-        dns_servers=$(python3 -c "
-import json
-with open('$daemon_json', 'r') as f:
-    data = json.load(f)
-    dns = data.get('dns', [])
-    for server in dns:
-        print(server)
-" 2>/dev/null || echo "")
-        
-        if [[ -n "$dns_servers" ]]; then
-            while IFS= read -r dns_server; do
-                if [[ -n "$dns_server" ]]; then
-                    log_info "测试DNS服务器: $dns_server"
-                    if timeout 3 nslookup google.com "$dns_server" >/dev/null 2>&1; then
-                        log_success "DNS服务器可用: $dns_server"
-                    else
-                        log_warning "DNS服务器不可用: $dns_server"
-                    fi
-                fi
-            done <<< "$dns_servers"
-        fi
-    fi
-}
-
-# 识别JSON语法错误
-identify_json_syntax_errors() {
-    local daemon_json="$1"
-    
-    log_info "3. 分析常见JSON语法错误:"
-    
-    # 检查常见语法问题
-    local line_num=1
-    while IFS= read -r line; do
-        # 检查多余的逗号
-        if [[ "$line" =~ ,\s*[}\]] ]]; then
-            log_warning "第${line_num}行: 发现多余的逗号 - $line"
-        fi
-        
-        # 检查缺少逗号
-        if [[ "$line" =~ \"[^\"]*\"\s*$ ]] && [[ $(sed -n "$((line_num+1))p" "$daemon_json") =~ ^\s*\" ]]; then
-            log_warning "第${line_num}行: 可能缺少逗号 - $line"
-        fi
-        
-        # 检查引号问题
-        local quote_count
-        quote_count=$(echo "$line" | grep -o '"' | wc -l)
-        if [[ $((quote_count % 2)) -ne 0 ]]; then
-            log_warning "第${line_num}行: 引号不匹配 - $line"
-        fi
-        
-        ((line_num++))
-    done < "$daemon_json"
-    
-    # 检查括号匹配
-    local open_braces
-    local close_braces
-    open_braces=$(grep -o '{' "$daemon_json" | wc -l)
-    close_braces=$(grep -o '}' "$daemon_json" | wc -l)
-    
-    if [[ $open_braces -ne $close_braces ]]; then
-        log_warning "大括号不匹配: 开括号${open_braces}个，闭括号${close_braces}个"
-    fi
-    
-    local open_brackets
-    local close_brackets
-    open_brackets=$(grep -o '\[' "$daemon_json" | wc -l)
-    close_brackets=$(grep -o '\]' "$daemon_json" | wc -l)
-    
-    if [[ $open_brackets -ne $close_brackets ]]; then
-        log_warning "方括号不匹配: 开括号${open_brackets}个，闭括号${close_brackets}个"
-    fi
-}
-
-# 修复Docker配置文件
+# 修复Docker配置
 fix_docker_config() {
     log_info "=== 修复Docker配置 ==="
     
     local daemon_json="/etc/docker/daemon.json"
     
-    # 移除可能有问题的配置文件
-    if [[ -f "$daemon_json" ]]; then
-        log_info "备份并移除当前daemon.json配置"
-        mv "$daemon_json" "${daemon_json}.broken.$(date +%Y%m%d-%H%M%S)"
-        log_success "已备份损坏的配置文件"
-    fi
-    
-    # 创建Docker配置目录
+    # 确保/etc/docker目录存在
     mkdir -p /etc/docker
     
-    # 检测可用的镜像源和DNS
-    log_info "检测可用的镜像源和DNS服务器..."
+    # 备份现有配置（如果存在）
+    if [[ -f "$daemon_json" ]]; then
+        cp "$daemon_json" "$BACKUP_DIR/daemon.json.original"
+        log_info "已备份原始daemon.json"
+    fi
     
-    # 测试镜像源
-    local available_mirrors=()
+    # 检测可用的镜像源
+    log_info "1. 检测可用的Docker镜像源..."
+    local mirrors=()
     local test_mirrors=(
-        "https://registry.cn-hangzhou.aliyuncs.com"
-        "https://registry.cn-shanghai.aliyuncs.com"
-        "https://registry.cn-beijing.aliyuncs.com"
-        "https://mirror.ccs.tencentyun.com"
-        "https://registry.cn-shenzhen.aliyuncs.com"
+        "https://docker.mirrors.ustc.edu.cn"
+        "https://hub-mirror.c.163.com"
+        "https://mirror.baidubce.com"
+        "https://ccr.ccs.tencentyun.com"
     )
     
     for mirror in "${test_mirrors[@]}"; do
-        if timeout 10 curl -s --connect-timeout 5 "$mirror/v2/" >/dev/null 2>&1; then
-            available_mirrors+=("$mirror")
-            log_success "镜像源可用: $mirror"
+        if curl -s --connect-timeout 5 "$mirror/v2/" >/dev/null 2>&1; then
+            mirrors+=("$mirror")
+            log_success "可用镜像源: $mirror"
         else
-            log_warning "镜像源不可用: $mirror"
+            log_warning "不可用镜像源: $mirror"
         fi
     done
     
-    # 测试DNS服务器
-    local available_dns=()
+    # 检测可用的DNS服务器
+    log_info "2. 检测可用的DNS服务器..."
+    local dns_servers=()
     local test_dns=("8.8.8.8" "114.114.114.114" "223.5.5.5" "1.1.1.1")
     
     for dns in "${test_dns[@]}"; do
-        if timeout 5 ping -c 1 -W 3 "$dns" >/dev/null 2>&1; then
-            available_dns+=("$dns")
-            log_success "DNS服务器可用: $dns"
+        if ping -c 1 -W 3 "$dns" >/dev/null 2>&1; then
+            dns_servers+=("$dns")
+            log_success "可用DNS: $dns"
         else
-            log_warning "DNS服务器不可用: $dns"
+            log_warning "不可用DNS: $dns"
         fi
     done
     
-    # 创建优化的Docker配置
-    log_info "创建优化的Docker配置..."
+    # 生成优化的daemon.json配置
+    log_info "3. 生成优化的daemon.json配置..."
     
-    # 基础配置
-    cat > "$daemon_json" << 'EOF'
+    cat > "$daemon_json" << EOF
 {
-  "log-driver": "json-file",
-  "log-opts": {
-    "max-size": "10m",
-    "max-file": "3"
-  },
-  "storage-driver": "overlay2",
-  "live-restore": true,
-  "max-concurrent-downloads": 3,
-  "max-concurrent-uploads": 3
+    "registry-mirrors": [
 EOF
     
     # 添加可用的镜像源
-    if [[ ${#available_mirrors[@]} -gt 0 ]]; then
-        echo '  ,"registry-mirrors": [' >> "$daemon_json"
-        for i in "${!available_mirrors[@]}"; do
-            if [[ $i -eq $((${#available_mirrors[@]} - 1)) ]]; then
-                echo "    \"${available_mirrors[$i]}\"" >> "$daemon_json"
+    if [[ ${#mirrors[@]} -gt 0 ]]; then
+        for i in "${!mirrors[@]}"; do
+            if [[ $i -eq $((${#mirrors[@]} - 1)) ]]; then
+                echo "        \"${mirrors[$i]}\"" >> "$daemon_json"
             else
-                echo "    \"${available_mirrors[$i]}\"," >> "$daemon_json"
+                echo "        \"${mirrors[$i]}\"," >> "$daemon_json"
             fi
         done
-        echo '  ]' >> "$daemon_json"
-        log_success "添加了 ${#available_mirrors[@]} 个可用镜像源"
+    else
+        echo "        \"https://registry-1.docker.io\"" >> "$daemon_json"
     fi
+    
+    cat >> "$daemon_json" << EOF
+    ],
+    "dns": [
+EOF
     
     # 添加可用的DNS服务器
-    if [[ ${#available_dns[@]} -gt 0 ]]; then
-        echo '  ,"dns": [' >> "$daemon_json"
-        for i in "${!available_dns[@]}"; do
-            if [[ $i -eq $((${#available_dns[@]} - 1)) ]]; then
-                echo "    \"${available_dns[$i]}\"" >> "$daemon_json"
+    if [[ ${#dns_servers[@]} -gt 0 ]]; then
+        for i in "${!dns_servers[@]}"; do
+            if [[ $i -eq $((${#dns_servers[@]} - 1)) ]]; then
+                echo "        \"${dns_servers[$i]}\"" >> "$daemon_json"
             else
-                echo "    \"${available_dns[$i]}\"," >> "$daemon_json"
+                echo "        \"${dns_servers[$i]}\"," >> "$daemon_json"
             fi
         done
-        echo '  ]' >> "$daemon_json"
-        log_success "添加了 ${#available_dns[@]} 个可用DNS服务器"
+    else
+        echo "        \"8.8.8.8\"," >> "$daemon_json"
+        echo "        \"114.114.114.114\"" >> "$daemon_json"
     fi
     
-    # 结束JSON
-    echo '}' >> "$daemon_json"
-    
-    # 验证生成的JSON语法
-    if python3 -m json.tool "$daemon_json" >/dev/null 2>&1; then
-        log_success "已创建优化的Docker配置，JSON语法正确"
-        log_info "新配置内容:"
-        cat "$daemon_json"
-    else
-        log_error "生成的JSON配置语法错误，使用最小化配置"
-        cat > "$daemon_json" << 'EOF'
-{
-  "log-driver": "json-file",
-  "log-opts": {
-    "max-size": "10m",
-    "max-file": "3"
-  },
-  "storage-driver": "overlay2",
-  "live-restore": true
+    cat >> "$daemon_json" << EOF
+    ],
+    "log-driver": "json-file",
+    "log-opts": {
+        "max-size": "10m",
+        "max-file": "3"
+    },
+    "storage-driver": "overlay2",
+    "exec-opts": ["native.cgroupdriver=systemd"]
 }
 EOF
-        log_info "回退到最小化配置:"
-        cat "$daemon_json"
-    fi
     
+    # 验证生成的配置文件
+    if python3 -m json.tool "$daemon_json" >/dev/null 2>&1; then
+        log_success "daemon.json配置文件生成成功并通过语法检查"
+        log_info "新的daemon.json内容:"
+        cat "$daemon_json"
+    else
+        log_error "生成的daemon.json语法错误，回退到最小化配置"
+        
+        # 回退到最小化配置
+        cat > "$daemon_json" << EOF
+{
+    "log-driver": "json-file",
+    "log-opts": {
+        "max-size": "10m",
+        "max-file": "3"
+    }
+}
+EOF
+        log_info "已生成最小化daemon.json配置"
+    fi
     echo
 }
 
@@ -471,189 +549,124 @@ fix_system_dns() {
     log_info "=== 修复系统DNS配置 ==="
     
     # 备份原始DNS配置
-    if [[ -f /etc/resolv.conf ]]; then
-        local backup_path
-        backup_path="$(cat /tmp/docker-emergency-backup-path 2>/dev/null || echo '/tmp')/resolv.conf.backup.$(date +%Y%m%d-%H%M%S)"
-        cp /etc/resolv.conf "$backup_path"
-        log_success "已备份原始DNS配置到: $backup_path"
-    fi
+    cp /etc/resolv.conf "$BACKUP_DIR/resolv.conf.original"
+    log_info "已备份原始resolv.conf"
     
-    # 检测当前DNS配置问题
-    log_info "分析当前DNS配置问题..."
-    
+    # 分析当前DNS配置问题
+    log_info "1. 分析当前DNS配置..."
     if [[ -f /etc/resolv.conf ]]; then
-        log_info "当前DNS配置内容:"
+        log_info "当前resolv.conf内容:"
         cat /etc/resolv.conf
         
-        # 检查DNS服务器数量
-        local dns_count
-        dns_count=$(grep -c '^nameserver' /etc/resolv.conf 2>/dev/null || echo "0")
-        log_info "发现 $dns_count 个DNS服务器"
-        
-        # 测试现有DNS服务器
-        if [[ $dns_count -gt 0 ]]; then
-            log_info "测试现有DNS服务器..."
-            while IFS= read -r line; do
-                if [[ $line =~ ^nameserver[[:space:]]+([0-9.]+) ]]; then
-                    local dns_ip="${BASH_REMATCH[1]}"
-                    log_info "测试DNS: $dns_ip"
-                    if timeout 3 nslookup google.com "$dns_ip" >/dev/null 2>&1; then
-                        log_success "DNS可用: $dns_ip"
-                    else
-                        log_error "DNS不可用: $dns_ip"
-                    fi
-                fi
-            done < /etc/resolv.conf
-        fi
-    else
-        log_warning "resolv.conf文件不存在"
-    fi
-    
-    # 检测可用的DNS服务器
-    log_info "检测可用的DNS服务器..."
-    local available_dns=()
-    local test_dns_servers=(
-        "8.8.8.8"          # Google DNS
-        "8.8.4.4"          # Google DNS 备用
-        "114.114.114.114"  # 114 DNS
-        "114.114.115.115"  # 114 DNS 备用
-        "223.5.5.5"        # 阿里云 DNS
-        "223.6.6.6"        # 阿里云 DNS 备用
-        "1.1.1.1"          # Cloudflare DNS
-        "1.0.0.1"          # Cloudflare DNS 备用
-        "208.67.222.222"   # OpenDNS
-        "208.67.220.220"   # OpenDNS 备用
-    )
-    
-    for dns in "${test_dns_servers[@]}"; do
-        log_info "测试DNS服务器: $dns"
-        if timeout 5 ping -c 1 -W 3 "$dns" >/dev/null 2>&1; then
-            # 进一步测试DNS解析功能
-            if timeout 5 nslookup google.com "$dns" >/dev/null 2>&1; then
-                available_dns+=("$dns")
-                log_success "DNS服务器可用: $dns"
-            else
-                log_warning "DNS服务器可达但解析功能异常: $dns"
-            fi
+        # 检查是否有有效的nameserver
+        local nameserver_count
+        nameserver_count=$(grep -c "^nameserver" /etc/resolv.conf 2>/dev/null || echo "0")
+        if [[ $nameserver_count -eq 0 ]]; then
+            log_error "未找到有效的nameserver配置"
         else
-            log_error "DNS服务器不可达: $dns"
+            log_info "找到 $nameserver_count 个nameserver配置"
         fi
-    done
+    fi
+    echo
     
-    if [[ ${#available_dns[@]} -eq 0 ]]; then
-        log_error "没有找到可用的DNS服务器，网络连接存在严重问题"
-        log_warning "将使用默认DNS配置，但可能无法正常工作"
+    # 测试现有DNS服务器
+    log_info "2. 测试现有DNS服务器..."
+    local working_dns=()
+    
+    while IFS= read -r line; do
+        if [[ $line =~ ^nameserver[[:space:]]+([0-9.]+) ]]; then
+            local dns_ip="${BASH_REMATCH[1]}"
+            if ping -c 1 -W 3 "$dns_ip" >/dev/null 2>&1; then
+                working_dns+=("$dns_ip")
+                log_success "DNS服务器可用: $dns_ip"
+            else
+                log_error "DNS服务器不可用: $dns_ip"
+            fi
+        fi
+    done < /etc/resolv.conf
+    
+    # 如果现有DNS都不可用，使用公共DNS
+    if [[ ${#working_dns[@]} -eq 0 ]]; then
+        log_warning "现有DNS服务器都不可用，切换到公共DNS"
         
-        # 创建基本的DNS配置
-        cat > /etc/resolv.conf << 'EOF'
-# Docker修复脚本生成的基本DNS配置（网络问题时的回退配置）
-nameserver 8.8.8.8
-nameserver 114.114.114.114
-options timeout:5 attempts:2
-EOF
-    else
-        log_success "发现 ${#available_dns[@]} 个可用的DNS服务器"
-        
-        # 创建优化的DNS配置
-        log_info "创建优化的DNS配置..."
-        
-        cat > /etc/resolv.conf << 'EOF'
-# Docker修复脚本生成的优化DNS配置
-EOF
-        
-        # 添加可用的DNS服务器（最多5个）
-        local dns_added=0
-        for dns in "${available_dns[@]}"; do
-            if [[ $dns_added -lt 5 ]]; then
-                echo "nameserver $dns" >> /etc/resolv.conf
-                ((dns_added++))
+        # 智能选择最佳公共DNS
+        local public_dns=("8.8.8.8" "114.114.114.114" "223.5.5.5" "1.1.1.1")
+        for dns in "${public_dns[@]}"; do
+            if ping -c 1 -W 3 "$dns" >/dev/null 2>&1; then
+                working_dns+=("$dns")
+                log_success "公共DNS可用: $dns"
+                if [[ ${#working_dns[@]} -ge 2 ]]; then
+                    break
+                fi
             fi
         done
-        
-        # 添加优化选项
-        cat >> /etc/resolv.conf << 'EOF'
-options timeout:2 attempts:3 rotate single-request-reopen
-EOF
-        
-        log_success "已配置 $dns_added 个可用的DNS服务器"
     fi
     
-    # 检查NetworkManager是否在管理DNS
-    if systemctl is-active NetworkManager >/dev/null 2>&1; then
-        log_info "检测到NetworkManager正在运行"
+    # 生成新的resolv.conf
+    if [[ ${#working_dns[@]} -gt 0 ]]; then
+        log_info "3. 生成新的DNS配置..."
         
-        # 检查是否需要配置NetworkManager
-        if [[ -f /etc/NetworkManager/NetworkManager.conf ]]; then
-            if ! grep -q "dns=none" /etc/NetworkManager/NetworkManager.conf; then
-                log_info "配置NetworkManager不管理DNS..."
-                
-                # 备份NetworkManager配置
-                local nm_backup_path
-                nm_backup_path="$(cat /tmp/docker-emergency-backup-path 2>/dev/null || echo '/tmp')/NetworkManager.conf.backup.$(date +%Y%m%d-%H%M%S)"
-                cp /etc/NetworkManager/NetworkManager.conf "$nm_backup_path"
-                
-                # 添加dns=none配置
-                if grep -q "\[main\]" /etc/NetworkManager/NetworkManager.conf; then
-                    sed -i '/\[main\]/a dns=none' /etc/NetworkManager/NetworkManager.conf
-                else
-                    echo -e "\n[main]\ndns=none" >> /etc/NetworkManager/NetworkManager.conf
+        # 检查是否使用NetworkManager
+        if systemctl is-active NetworkManager >/dev/null 2>&1; then
+            log_info "检测到NetworkManager，通过NetworkManager配置DNS"
+            
+            # 通过NetworkManager设置DNS
+            local connection
+            connection=$(nmcli -t -f NAME connection show --active | head -1)
+            if [[ -n "$connection" ]]; then
+                nmcli connection modify "$connection" ipv4.dns "${working_dns[0]}"
+                if [[ ${#working_dns[@]} -gt 1 ]]; then
+                    nmcli connection modify "$connection" +ipv4.dns "${working_dns[1]}"
                 fi
-                
-                log_success "已配置NetworkManager不管理DNS"
-                log_info "重启NetworkManager以应用配置..."
-                systemctl restart NetworkManager || log_warning "NetworkManager重启失败"
-            else
-                log_info "NetworkManager已配置为不管理DNS"
+                nmcli connection up "$connection"
+                log_success "已通过NetworkManager更新DNS配置"
             fi
-        fi
-    fi
-    
-    # 验证DNS配置
-    log_info "验证DNS配置..."
-    log_info "最终DNS配置:"
-    cat /etc/resolv.conf
-    
-    # 测试DNS解析
-    log_info "测试DNS解析功能..."
-    local test_domains=("google.com" "baidu.com" "github.com")
-    local resolved_count=0
-    
-    for domain in "${test_domains[@]}"; do
-        if timeout 10 nslookup "$domain" >/dev/null 2>&1; then
-            log_success "DNS解析成功: $domain"
-            ((resolved_count++))
         else
-            log_warning "DNS解析失败: $domain"
+            log_info "直接更新resolv.conf文件"
+            
+            # 直接写入resolv.conf
+            cat > /etc/resolv.conf << EOF
+# Generated by Docker emergency repair script
+# $(date)
+EOF
+            
+            for dns in "${working_dns[@]}"; do
+                echo "nameserver $dns" >> /etc/resolv.conf
+            done
+            
+            echo "options timeout:2 attempts:3" >> /etc/resolv.conf
+            
+            log_success "已更新resolv.conf配置"
         fi
-    done
-    
-    if [[ $resolved_count -gt 0 ]]; then
-        log_success "DNS配置修复成功，$resolved_count/$((${#test_domains[@]})) 个域名解析正常"
+        
+        # 验证DNS解析
+        log_info "4. 验证DNS解析功能..."
+        if nslookup google.com >/dev/null 2>&1; then
+            log_success "DNS解析功能正常"
+        else
+            log_error "DNS解析功能仍然异常"
+        fi
     else
-        log_error "DNS配置修复失败，所有域名解析都失败"
+        log_error "无法找到可用的DNS服务器"
     fi
-    
     echo
 }
 
-# 清理Docker相关进程和文件
-clean_docker_processes() {
+# 清理Docker进程和文件
+cleanup_docker_processes() {
     log_info "=== 清理Docker进程和文件 ==="
     
-    # 停止所有Docker相关服务
-    log_info "停止Docker相关服务..."
-    systemctl stop docker.socket docker.service containerd.service 2>/dev/null || true
+    # 停止Docker服务
+    log_info "1. 停止Docker相关服务..."
+    systemctl stop docker.socket docker.service containerd 2>/dev/null || true
     
-    # 等待进程完全停止
-    sleep 5
-    
-    # 强制杀死残留进程
-    log_info "清理残留进程..."
-    pkill -f docker 2>/dev/null || true
+    # 杀死残留的Docker进程
+    log_info "2. 清理残留进程..."
+    pkill -f dockerd 2>/dev/null || true
     pkill -f containerd 2>/dev/null || true
     
-    # 清理Docker socket
-    log_info "清理Docker socket..."
+    # 清理Docker socket文件
+    log_info "3. 清理socket文件..."
     rm -f /var/run/docker.sock /var/run/docker.pid
     
     log_success "Docker进程和文件清理完成"
@@ -664,25 +677,15 @@ clean_docker_processes() {
 reinstall_docker_service() {
     log_info "=== 重新安装Docker服务文件 ==="
     
-    # 检查Docker是否已安装
-    if ! command -v docker >/dev/null 2>&1; then
-        log_error "Docker未安装，请先安装Docker"
-        return 1
-    fi
-    
     # 重新生成systemd服务文件
-    log_info "重新生成Docker systemd服务文件..."
-    
-    # 删除可能损坏的服务文件
-    rm -f /etc/systemd/system/docker.service
-    rm -f /etc/systemd/system/docker.socket
+    log_info "1. 重新生成systemd服务文件..."
     
     # 重新加载systemd
     systemctl daemon-reload
     
     # 重新启用Docker服务
     systemctl enable docker.service
-    systemctl enable docker.socket
+    systemctl enable containerd.service
     
     log_success "Docker服务文件重新安装完成"
     echo
@@ -692,39 +695,45 @@ reinstall_docker_service() {
 start_docker_service() {
     log_info "=== 启动Docker服务 ==="
     
-    # 重新加载systemd配置
-    systemctl daemon-reload
-    
-    # 启动containerd服务
-    log_info "启动containerd服务..."
-    systemctl start containerd.service || log_warning "containerd启动失败"
-    
-    # 启动Docker socket
-    log_info "启动Docker socket..."
-    systemctl start docker.socket || log_warning "Docker socket启动失败"
-    
-    # 启动Docker服务
-    log_info "启动Docker服务..."
-    if systemctl start docker.service; then
-        log_success "Docker服务启动成功"
+    # 按顺序启动服务
+    log_info "1. 启动containerd服务..."
+    if systemctl start containerd; then
+        log_success "containerd服务启动成功"
     else
-        log_error "Docker服务启动失败"
-        log_info "查看详细错误信息:"
-        journalctl -xeu docker.service --no-pager -l --since "1 minute ago"
+        log_error "containerd服务启动失败"
+        systemctl status containerd --no-pager -l
+    fi
+    
+    sleep 2
+    
+    log_info "2. 启动docker.socket..."
+    if systemctl start docker.socket; then
+        log_success "docker.socket启动成功"
+    else
+        log_error "docker.socket启动失败"
+        systemctl status docker.socket --no-pager -l
+    fi
+    
+    sleep 2
+    
+    log_info "3. 启动docker.service..."
+    if systemctl start docker.service; then
+        log_success "docker.service启动成功"
+    else
+        log_error "docker.service启动失败"
+        systemctl status docker.service --no-pager -l
         return 1
     fi
     
-    # 等待服务完全启动
-    sleep 10
-    
     # 验证服务状态
-    if systemctl is-active --quiet docker; then
+    log_info "4. 验证服务状态..."
+    if systemctl is-active docker >/dev/null 2>&1; then
         log_success "Docker服务运行正常"
     else
         log_error "Docker服务状态异常"
+        systemctl status docker --no-pager -l
         return 1
     fi
-    
     echo
 }
 
@@ -732,8 +741,8 @@ start_docker_service() {
 verify_docker_functionality() {
     log_info "=== 验证Docker功能 ==="
     
-    # 测试Docker基本命令
-    log_info "1. 测试Docker版本:"
+    # 测试Docker命令
+    log_info "1. 测试Docker版本..."
     if docker --version; then
         log_success "Docker版本命令正常"
     else
@@ -741,209 +750,177 @@ verify_docker_functionality() {
         return 1
     fi
     
-    # 测试Docker信息
-    log_info "2. 测试Docker信息:"
-    if timeout 30 docker info >/dev/null 2>&1; then
+    log_info "2. 测试Docker信息..."
+    if docker info >/dev/null 2>&1; then
         log_success "Docker信息命令正常"
     else
         log_error "Docker信息命令失败"
+        docker info
         return 1
     fi
     
-    # 测试简单容器运行
-    log_info "3. 测试容器运行:"
-    if timeout 60 docker run --rm hello-world >/dev/null 2>&1; then
-        log_success "容器运行测试成功"
+    log_info "3. 测试Docker运行容器..."
+    if docker run --rm hello-world >/dev/null 2>&1; then
+        log_success "Docker容器运行测试成功"
     else
-        log_warning "容器运行测试失败，可能是网络问题"
+        log_warning "Docker容器运行测试失败，可能是网络问题"
+        log_info "尝试运行hello-world容器:"
+        docker run --rm hello-world || true
     fi
-    
     echo
 }
 
 # 显示修复报告
 show_repair_report() {
-    log_info "=== Docker紧急修复报告 ==="
+    log_info "=== Docker修复报告 ==="
     echo
     
-    log_info "修复步骤完成情况:"
-    echo "✓ 1. 系统诊断和资源检查"
-    echo "✓ 2. 网络配置检查和修复（增强版DNS诊断）"
-    echo "✓ 3. Docker配置文件修复（增强版语法检测）"
-    echo "✓ 4. 系统DNS配置修复（智能DNS检测）"
-    echo "✓ 5. Docker进程清理"
-    echo "✓ 6. Docker服务文件重新安装"
-    echo "✓ 7. Docker服务启动"
-    echo "✓ 8. Docker功能验证"
+    log_info "修复步骤已完成，以下是详细信息:"
     echo
     
-    log_info "重要文件位置:"
-    echo "• Docker配置: /etc/docker/daemon.json"
-    echo "• DNS配置: /etc/resolv.conf"
-    echo "• Docker服务: /lib/systemd/system/docker.service"
-    local backup_dir
-    backup_dir="$(cat /tmp/docker-emergency-backup-path 2>/dev/null || echo '未创建备份')"
-    echo "• 备份目录: $backup_dir"
+    log_info "1. 配置文件位置:"
+    echo "   - Docker配置: /etc/docker/daemon.json"
+    echo "   - DNS配置: /etc/resolv.conf"
     echo
     
-    # 显示当前配置状态
-    log_info "当前配置状态:"
+    log_info "2. 备份文件位置:"
+    echo "   - 备份目录: $BACKUP_DIR"
+    if [[ -f "$BACKUP_DIR/daemon.json.original" ]]; then
+        echo "   - 原始daemon.json: $BACKUP_DIR/daemon.json.original"
+    fi
+    if [[ -f "$BACKUP_DIR/resolv.conf.original" ]]; then
+        echo "   - 原始resolv.conf: $BACKUP_DIR/resolv.conf.original"
+    fi
+    echo
     
-    # 检查daemon.json状态
+    log_info "3. 当前配置状态:"
+    
+    # 检查daemon.json语法
     if [[ -f /etc/docker/daemon.json ]]; then
         if python3 -m json.tool /etc/docker/daemon.json >/dev/null 2>&1; then
-            echo "• daemon.json: ✓ 语法正确"
+            log_success "daemon.json语法正确"
             
-            # 检查镜像源数量
+            # 统计配置项
             local mirror_count
-            mirror_count=$(python3 -c "import json; data=json.load(open('/etc/docker/daemon.json')); print(len(data.get('registry-mirrors', [])))" 2>/dev/null || echo "0")
-            echo "  - 配置了 $mirror_count 个镜像源"
-            
-            # 检查DNS数量
             local dns_count
-            dns_count=$(python3 -c "import json; data=json.load(open('/etc/docker/daemon.json')); print(len(data.get('dns', [])))" 2>/dev/null || echo "0")
-            echo "  - 配置了 $dns_count 个DNS服务器"
+            mirror_count=$(grep -c "registry-mirrors" /etc/docker/daemon.json 2>/dev/null || echo "0")
+            dns_count=$(grep -c '"[0-9]\+\.[0-9]\+\.[0-9]\+\.[0-9]\+"' /etc/docker/daemon.json 2>/dev/null || echo "0")
+            echo "   - 镜像源配置: $mirror_count 个"
+            echo "   - DNS配置: $dns_count 个"
         else
-            echo "• daemon.json: ✗ 语法错误"
+            log_error "daemon.json语法错误"
         fi
     else
-        echo "• daemon.json: ✗ 文件不存在"
+        log_warning "daemon.json文件不存在"
     fi
     
-    # 检查DNS配置状态
-    if [[ -f /etc/resolv.conf ]]; then
-        local system_dns_count
-        system_dns_count=$(grep -c '^nameserver' /etc/resolv.conf 2>/dev/null || echo "0")
-        echo "• 系统DNS: ✓ 配置了 $system_dns_count 个DNS服务器"
+    # 检查系统DNS
+    local system_dns_count
+    system_dns_count=$(grep -c "^nameserver" /etc/resolv.conf 2>/dev/null || echo "0")
+    if [[ $system_dns_count -gt 0 ]]; then
+        log_success "系统DNS配置正常 ($system_dns_count 个DNS服务器)"
     else
-        echo "• 系统DNS: ✗ resolv.conf不存在"
+        log_error "系统DNS配置异常"
     fi
     
-    # 检查网络连接状态
-    if timeout 5 ping -c 1 -W 3 8.8.8.8 >/dev/null 2>&1; then
-        echo "• 网络连接: ✓ 正常"
+    # 检查网络连接
+    if ping -c 1 -W 3 8.8.8.8 >/dev/null 2>&1; then
+        log_success "网络连接正常"
     else
-        echo "• 网络连接: ✗ 异常"
+        log_error "网络连接异常"
     fi
-    
     echo
     
-    log_info "如果问题仍然存在，请按以下顺序检查:"
-    echo "1. 网络连接问题:"
-    echo "   • 检查网络接口: ip addr show"
-    echo "   • 检查路由表: ip route show"
-    echo "   • 测试网络: ping 8.8.8.8"
-    echo "2. DNS解析问题:"
-    echo "   • 测试DNS: nslookup google.com"
-    echo "   • 检查DNS配置: cat /etc/resolv.conf"
-    echo "3. Docker配置问题:"
-    echo "   • 检查配置语法: python3 -m json.tool /etc/docker/daemon.json"
-    echo "   • 查看Docker日志: journalctl -xeu docker.service"
-    echo "4. 系统资源问题:"
-    echo "   • 检查磁盘空间: df -h"
-    echo "   • 检查内存使用: free -h"
-    echo "   • 检查系统负载: uptime"
-    echo "5. 权限和安全问题:"
-    echo "   • 检查防火墙: sudo ufw status"
-    echo "   • 检查SELinux: sestatus"
-    echo "   • 检查Docker组: groups \$USER"
+    log_info "4. 问题排查建议:"
+    echo
+    
+    log_info "如果Docker仍然无法正常工作，请检查:"
+    echo "   a) 防火墙设置: sudo ufw status"
+    echo "   b) 内核版本: uname -r (建议 >= 3.10)"
+    echo "   c) 存储驱动: docker info | grep 'Storage Driver'"
+    echo "   d) 磁盘空间: df -h /var/lib/docker"
+    echo "   e) 内存使用: free -h"
     echo
     
     log_info "常用诊断命令:"
-    echo "• 检查Docker状态: systemctl status docker"
-    echo "• 查看详细日志: journalctl -xeu docker.service --no-pager"
-    echo "• 测试Docker功能: docker run hello-world"
-    echo "• 检查Docker信息: docker info"
-    echo "• 重启Docker服务: sudo systemctl restart docker"
+    echo "   - 查看Docker日志: journalctl -u docker -f"
+    echo "   - 查看容器日志: docker logs <container_id>"
+    echo "   - 重启Docker: sudo systemctl restart docker"
+    echo "   - 检查Docker状态: sudo systemctl status docker"
+    echo "   - 测试网络: docker run --rm busybox ping -c 3 8.8.8.8"
     echo
     
-    # 最终状态检查
-    log_info "最终状态检查:"
+    log_info "5. 最终状态检查:"
+    
+    # Docker服务状态
     if systemctl is-active docker >/dev/null 2>&1; then
-        log_success "✓ Docker服务状态: 运行中"
-        
-        # 尝试运行简单的Docker命令
-        if timeout 30 docker version >/dev/null 2>&1; then
-            log_success "✓ Docker命令响应: 正常"
-        else
-            log_warning "⚠ Docker命令响应: 超时或异常"
-        fi
-        
-        # 检查Docker daemon连接
-        if timeout 10 docker info >/dev/null 2>&1; then
-            log_success "✓ Docker daemon连接: 正常"
-        else
-            log_warning "⚠ Docker daemon连接: 异常"
-        fi
+        log_success "Docker服务: 运行中"
     else
-        log_error "✗ Docker服务状态: 未运行"
-        log_info "建议手动执行: sudo systemctl start docker"
+        log_error "Docker服务: 未运行"
+    fi
+    
+    # containerd服务状态
+    if systemctl is-active containerd >/dev/null 2>&1; then
+        log_success "containerd服务: 运行中"
+    else
+        log_error "containerd服务: 未运行"
+    fi
+    
+    # Docker socket
+    if [[ -S /var/run/docker.sock ]]; then
+        log_success "Docker socket: 存在"
+    else
+        log_error "Docker socket: 不存在"
     fi
     
     echo
-    log_info "修复完成时间: $(date)"
-    log_info "备份文件位置: $backup_dir"
+    log_info "6. 下一步建议:"
     
-    # 提供下一步建议
-    echo
-    log_info "下一步建议:"
     if systemctl is-active docker >/dev/null 2>&1; then
-        echo "1. 测试Docker功能: docker run hello-world"
-        echo "2. 拉取常用镜像: docker pull nginx:alpine"
-        echo "3. 检查镜像源速度: time docker pull hello-world"
+        log_success "Docker修复成功！可以正常使用Docker了。"
+        echo "   建议运行: docker run hello-world 来验证功能"
     else
-        echo "1. 手动启动Docker: sudo systemctl start docker"
-        echo "2. 查看启动日志: journalctl -xeu docker.service"
-        echo "3. 如果仍然失败，考虑重新安装Docker"
+        log_error "Docker修复未完全成功，建议:"
+        echo "   1. 检查系统日志: journalctl -xe"
+        echo "   2. 重启系统: sudo reboot"
+        echo "   3. 重新安装Docker: apt remove docker.io && apt install docker.io"
     fi
-    
     echo
-    log_success "紧急修复脚本执行完成！"
 }
 
 # 主函数
 main() {
-    echo "=== Docker服务紧急修复脚本 ==="
-    echo "版本: 1.1.0 - 增强版 - 专门解决Docker服务启动失败问题"
-    echo "日期: $(date)"
+    log_info "=== Docker服务紧急修复脚本 ==="
+    log_info "版本: 1.1.0 - 增强版 - 专门解决Docker服务启动失败问题"
+    log_info "日期: $(date)"
     echo
     
-    # 检查权限
+    # 检查root权限
     check_root
     
-    # 创建备份
-    create_backup
+    # 创建备份目录
+    create_backup_dir
     
-    # 详细诊断
-    check_docker_service_status
+    # 1. 诊断阶段
+    check_docker_service
+    analyze_docker_failure
     check_system_resources
     check_network_config
     check_docker_config
     
-    echo
-    log_info "开始紧急修复..."
-    echo
-    
-    # 执行修复步骤
+    # 2. 修复阶段
     fix_docker_config
     fix_system_dns
-    clean_docker_processes
+    cleanup_docker_processes
     reinstall_docker_service
+    
+    # 3. 验证阶段
     start_docker_service
-    
-    echo
-    log_info "修复完成，开始验证..."
-    echo
-    
-    # 验证修复结果
     verify_docker_functionality
     
-    echo
-    # 显示报告
+    # 4. 报告阶段
     show_repair_report
 }
 
-# 脚本入口
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    main "$@"
-fi
+# 执行主函数
+main "$@"
