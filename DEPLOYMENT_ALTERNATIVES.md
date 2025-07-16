@@ -30,14 +30,14 @@ FROM node:18-bullseye AS runner
 FROM ubuntu:22.04 AS deps
 
 # 安装Node.js和npm
-RUN apt-get update && apt-get install -y \
-    curl \
-    ca-certificates \
-    gnupg \
-    lsb-release \
-    && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
-    && apt-get install -y nodejs \
-    && apt-get clean \
+RUN apt-get update && apt-get install -y \\
+    curl \\
+    ca-certificates \\
+    gnupg \\
+    lsb-release \\
+    && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \\
+    && apt-get install -y nodejs \\
+    && apt-get clean \\
     && rm -rf /var/lib/apt/lists/*
 ```
 
@@ -50,9 +50,9 @@ FROM node:lts
 WORKDIR /app
 
 # 安装系统依赖
-RUN apt-get update && apt-get install -y \
-    curl \
-    && apt-get clean \
+RUN apt-get update && apt-get install -y \\
+    curl \\
+    && apt-get clean \\
     && rm -rf /var/lib/apt/lists/*
 
 # 配置npm镜像源
@@ -75,10 +75,10 @@ USER app
 EXPOSE 3000
 
 # 健康检查
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \\
     CMD curl -f http://localhost:3000/api/health || exit 1
 
-CMD ["npm", "start"]
+CMD [\"npm\", \"start\"]
 ```
 
 ## 🖥️ 传统部署方案（无Docker）
@@ -101,7 +101,7 @@ CMD ["npm", "start"]
 
 set -e
 
-echo "🚀 开始JAB租赁平台传统部署..."
+echo \"🚀 开始JAB租赁平台传统部署...\"
 
 # 更新系统
 sudo apt update && sudo apt upgrade -y
@@ -139,8 +139,8 @@ sudo usermod -aG sudo jab
 sudo mkdir -p /var/www/jab
 sudo chown jab:jab /var/www/jab
 
-echo "✅ 基础环境安装完成"
-echo "📋 下一步：配置数据库和部署应用"
+echo \"✅ 基础环境安装完成\"
+echo \"📋 下一步：配置数据库和部署应用\"
 ```
 
 #### 3.3 数据库配置
@@ -154,14 +154,14 @@ sudo -u postgres psql <<EOF
 CREATE DATABASE jab_rental;
 CREATE USER jab_user WITH ENCRYPTED PASSWORD 'your_secure_password';
 GRANT ALL PRIVILEGES ON DATABASE jab_rental TO jab_user;
-\q
+\\q
 EOF
 
 # 配置Redis（如需密码）
-echo "requirepass your_redis_password" | sudo tee -a /etc/redis/redis.conf
+echo \"requirepass your_redis_password\" | sudo tee -a /etc/redis/redis.conf
 sudo systemctl restart redis-server
 
-echo "✅ 数据库配置完成"
+echo \"✅ 数据库配置完成\"
 ```
 
 #### 3.4 应用部署
@@ -170,21 +170,24 @@ echo "✅ 数据库配置完成"
 #!/bin/bash
 # deploy-app.sh - 应用部署脚本
 
-APP_DIR="/var/www/jab"
-REPO_URL="https://github.com/dignifnrfb/jab-rental-platform-v2.git"
+APP_DIR=\"/var/www/jab\"
+REPO_URL=\"https://github.com/dignifnrfb/jab-rental-platform-v2.git\"
 
 # 切换到应用用户
 sudo -u jab bash <<EOF
 cd $APP_DIR
 
 # 克隆或更新代码
-if [ -d ".git" ]; then
+if [ -d \".git\" ]; then
     git pull origin main
 else
     git clone $REPO_URL .
 fi
 
-# 安装依赖
+# 安装依赖（解决husky错误）
+echo \"📦 安装依赖...\"
+# 先安装husky以避免prepare脚本失败
+npm install husky --save-dev
 npm ci --production
 
 # 构建应用
@@ -197,7 +200,7 @@ npx prisma generate
 npx prisma migrate deploy
 EOF
 
-echo "✅ 应用部署完成"
+echo \"✅ 应用部署完成\"
 ```
 
 ### 方案4：PM2进程管理配置
@@ -206,32 +209,32 @@ echo "✅ 应用部署完成"
 
 ```json
 {
-  "apps": [
+  \"apps\": [
     {
-      "name": "jab-rental",
-      "script": "npm",
-      "args": "start",
-      "cwd": "/var/www/jab",
-      "instances": "max",
-      "exec_mode": "cluster",
-      "env": {
-        "NODE_ENV": "production",
-        "PORT": "3000",
-        "DATABASE_URL": "postgresql://jab_user:your_secure_password@localhost:5432/jab_rental",
-        "REDIS_URL": "redis://localhost:6379",
-        "NEXTAUTH_SECRET": "your_nextauth_secret",
-        "NEXTAUTH_URL": "https://yourdomain.com"
+      \"name\": \"jab-rental\",
+      \"script\": \"npm\",
+      \"args\": \"start\",
+      \"cwd\": \"/var/www/jab\",
+      \"instances\": \"max\",
+      \"exec_mode\": \"cluster\",
+      \"env\": {
+        \"NODE_ENV\": \"production\",
+        \"PORT\": \"3000\",
+        \"DATABASE_URL\": \"postgresql://jab_user:your_secure_password@localhost:5432/jab_rental\",
+        \"REDIS_URL\": \"redis://localhost:6379\",
+        \"NEXTAUTH_SECRET\": \"your_nextauth_secret\",
+        \"NEXTAUTH_URL\": \"https://yourdomain.com\"
       },
-      "log_date_format": "YYYY-MM-DD HH:mm Z",
-      "error_file": "/var/log/jab/error.log",
-      "out_file": "/var/log/jab/out.log",
-      "log_file": "/var/log/jab/combined.log",
-      "time": true,
-      "max_memory_restart": "1G",
-      "node_args": "--max_old_space_size=1024",
-      "restart_delay": 4000,
-      "max_restarts": 10,
-      "min_uptime": "10s"
+      \"log_date_format\": \"YYYY-MM-DD HH:mm Z\",
+      \"error_file\": \"/var/log/jab/error.log\",
+      \"out_file\": \"/var/log/jab/out.log\",
+      \"log_file\": \"/var/log/jab/combined.log\",
+      \"time\": true,
+      \"max_memory_restart\": \"1G\",
+      \"node_args\": \"--max_old_space_size=1024\",
+      \"restart_delay\": 4000,
+      \"max_restarts\": 10,
+      \"min_uptime\": \"10s\"
     }
   ]
 }
@@ -255,7 +258,7 @@ pm2 save
 pm2 startup
 EOF
 
-echo "✅ PM2应用启动完成"
+echo \"✅ PM2应用启动完成\"
 ```
 
 ### 方案5：Nginx反向代理配置
@@ -288,8 +291,8 @@ server {
     # 安全头
     add_header X-Frame-Options DENY;
     add_header X-Content-Type-Options nosniff;
-    add_header X-XSS-Protection "1; mode=block";
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-XSS-Protection \"1; mode=block\";
+    add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always;
     
     # 日志
     access_log /var/log/nginx/jab-rental.access.log;
@@ -299,13 +302,13 @@ server {
     location /_next/static/ {
         alias /var/www/jab/.next/static/;
         expires 1y;
-        add_header Cache-Control "public, immutable";
+        add_header Cache-Control \"public, immutable\";
     }
     
     location /public/ {
         alias /var/www/jab/public/;
         expires 1y;
-        add_header Cache-Control "public";
+        add_header Cache-Control \"public\";
     }
     
     # API和页面代理
@@ -355,7 +358,7 @@ sudo nginx -t
 # 重启Nginx
 sudo systemctl restart nginx
 
-echo "✅ Nginx配置完成"
+echo \"✅ Nginx配置完成\"
 ```
 
 ### 方案6：Systemd服务配置
@@ -399,24 +402,24 @@ WantedBy=multi-user.target
 #!/bin/bash
 # manage-service.sh - 服务管理脚本
 
-case "$1" in
+case \"$1\" in
     install)
         sudo cp jab-rental.service /etc/systemd/system/
         sudo systemctl daemon-reload
         sudo systemctl enable jab-rental
-        echo "✅ 服务安装完成"
+        echo \"✅ 服务安装完成\"
         ;;
     start)
         sudo systemctl start jab-rental
-        echo "✅ 服务启动完成"
+        echo \"✅ 服务启动完成\"
         ;;
     stop)
         sudo systemctl stop jab-rental
-        echo "✅ 服务停止完成"
+        echo \"✅ 服务停止完成\"
         ;;
     restart)
         sudo systemctl restart jab-rental
-        echo "✅ 服务重启完成"
+        echo \"✅ 服务重启完成\"
         ;;
     status)
         sudo systemctl status jab-rental
@@ -425,7 +428,7 @@ case "$1" in
         sudo journalctl -u jab-rental -f
         ;;
     *)
-        echo "用法: $0 {install|start|stop|restart|status|logs}"
+        echo \"用法: $0 {install|start|stop|restart|status|logs}\"
         exit 1
         ;;
 esac
@@ -450,13 +453,13 @@ services:
       POSTGRES_USER: jab_user
       POSTGRES_PASSWORD: your_secure_password
     ports:
-      - "5432:5432"
+      - \"5432:5432\"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U jab_user -d jab_rental"]
+      test: [\"CMD-SHELL\", \"pg_isready -U jab_user -d jab_rental\"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -465,12 +468,12 @@ services:
     image: redis:7-alpine
     container_name: jab-redis
     ports:
-      - "6379:6379"
+      - \"6379:6379\"
     volumes:
       - redis_data:/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [\"CMD\", \"redis-cli\", \"ping\"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -533,7 +536,22 @@ docker compose -f docker-compose.db-only.yml up -d
 
 ### 常见问题
 
-1. **Node.js版本不兼容**
+1. **Husky错误 (husky: not found)**
+   ```bash
+   # 问题：npm prepare脚本执行时找不到husky
+   # 解决方案1：预安装husky
+   npm install husky --save-dev
+   npm install --global husky
+   
+   # 解决方案2：跳过npm脚本
+   npm ci --production --ignore-scripts
+   
+   # 解决方案3：使用修复脚本
+   chmod +x fix-husky-error.sh
+   ./fix-husky-error.sh
+   ```
+
+2. **Node.js版本不兼容**
    ```bash
    # 使用nvm管理Node.js版本
    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
@@ -541,7 +559,7 @@ docker compose -f docker-compose.db-only.yml up -d
    nvm use 18
    ```
 
-2. **数据库连接失败**
+3. **数据库连接失败**
    ```bash
    # 检查PostgreSQL状态
    sudo systemctl status postgresql
@@ -550,7 +568,7 @@ docker compose -f docker-compose.db-only.yml up -d
    psql -h localhost -U jab_user -d jab_rental
    ```
 
-3. **端口占用**
+4. **端口占用**
    ```bash
    # 查看端口占用
    sudo netstat -tlnp | grep :3000
@@ -559,7 +577,7 @@ docker compose -f docker-compose.db-only.yml up -d
    sudo kill -9 <PID>
    ```
 
-4. **权限问题**
+5. **权限问题**
    ```bash
    # 修复文件权限
    sudo chown -R jab:jab /var/www/jab
