@@ -1,6 +1,16 @@
-# JAB 租赁平台
+# JAB 租赁平台 / JAB Rental Platform
 
 专业键鼠设备租赁系统，基于 Next.js 14、TypeScript、Prisma 和 Tailwind CSS 构建的现代化 Web 应用。
+
+A modern peripherals (keyboard / mouse) rental platform built on Next.js 14, TypeScript, Prisma and Tailwind CSS, with full Docker deployment for Alibaba Cloud ECS.
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+![Next.js](https://img.shields.io/badge/Next.js-14-000000?logo=next.js&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
+![Prisma](https://img.shields.io/badge/Prisma-2D3748?logo=prisma&logoColor=white)
+![Tailwind](https://img.shields.io/badge/Tailwind-38B2AC?logo=tailwind-css&logoColor=white)
+
+> **Security note:** an early version of this repo had `.env` tracked. See [`SECURITY.md`](SECURITY.md) for details and rotation steps.
 
 ## 🚀 项目特性
 
